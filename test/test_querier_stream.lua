@@ -183,6 +183,17 @@ local function addInterruptedStreamNotice(content, err)
     return content .. notice, nil
 end
 
+local function isOutputLimitStopReason(reason)
+    if type(reason) ~= "string" then
+        return false
+    end
+    local lowered = reason:lower()
+    return lowered == "length"
+        or lowered == "max_tokens"
+        or lowered == "max_output_tokens"
+        or lowered:find("max", 1, true) ~= nil and lowered:find("token", 1, true) ~= nil
+end
+
 local tests = {
 
     -- =========================================================================
@@ -338,6 +349,14 @@ local tests = {
         local content, err = addInterruptedStreamNotice("   ", "\n upstream closed")
         assert.equal(content, nil)
         assert.equal(err, "upstream closed")
+    end),
+
+    test("output limit stop reasons trigger stream continuation", function()
+        assert.isTrue(isOutputLimitStopReason("length"))
+        assert.isTrue(isOutputLimitStopReason("MAX_TOKENS"))
+        assert.isTrue(isOutputLimitStopReason("max_output_tokens"))
+        assert.isFalse(isOutputLimitStopReason("stop"))
+        assert.isFalse(isOutputLimitStopReason("tool_calls"))
     end),
 }
 

@@ -22,6 +22,7 @@ local Prompts = require("assistant_prompts").assistant_prompts
 
 local API_HANDLERS = {}
 local MAX_TOOL_ROUNDS = 3
+local MAX_STREAM_CONTINUATION_ROUNDS = 3
 local STREAM_PREVIEW_TAIL_LIMIT = 3000
 
 -- default_value for rapidjson decoded object
@@ -30,6 +31,21 @@ local function json_default(value, default_value)
         return default_value
     end
     return value
+end
+
+local function isOutputLimitStopReason(reason)
+    if type(reason) ~= "string" then
+        return false
+    end
+    local lowered = reason:lower()
+    return lowered == "length"
+        or lowered == "max_tokens"
+        or lowered == "max_output_tokens"
+        or lowered:find("max", 1, true) ~= nil and lowered:find("token", 1, true) ~= nil
+end
+
+local function buildStreamContinuationPrompt()
+    return _("Continue the previous answer exactly from where it stopped. Do not restart, summarize, or repeat earlier text.")
 end
 local Querier = {
     assistant = nil, -- reference to the main assistant object
@@ -431,6 +447,9 @@ function Querier:query(message_history, title)
         --   ok=nil,   err=string                     → cancelled / error
         -- ---------------------------------------------------------------
         local tool_rounds = 0
+        local continuation_rounds = 0
+        local continuation_parts
+        local continuation_start_index
 
         repeat
             local bg_fn
@@ -448,7 +467,7 @@ function Querier:query(message_history, title)
                 break
             end
 
-            local ok, content, tool_calls_array = self:showStreamDialog(bg_fn)
+            local ok, content, tool_calls_array, stream_meta = self:showStreamDialog(bg_fn)
             if not ok then
                 -- cancelled or stream error
                 res = nil
@@ -461,56 +480,92 @@ function Querier:query(message_history, title)
 
             if type(content) == "string" then
                 -- Normal text answer — done
-                res = content
-                err = nil
-                break
-            end
-
-            -- Tool calls detected in stream
-            if type(tool_calls_array) ~= "table" or #tool_calls_array == 0 then
-                res = nil
-                err = _("Stream ended with no content and no tool calls.")
-                break
-            end
-
-            -- Build tool result and append to history
-            local format = ToolExecutor.getHandlerFormat(self.handler_name)
-            local build_ok, raw_assistant = ToolExecutor.buildRawAssistantForToolCall(tool_calls_array, format, content)
-            if not build_ok then
-                res = nil
-                err = raw_assistant
-                logger.warn("failed to buildRawAssistantForToolCall", content, tool_calls_array)
-                break
-            end
-
-            local search_ok, search_results
-            search_ok, search_results = executeSearch(tool_calls_array, tool_rounds)
-            if not search_ok then
-                res = nil
-                err = search_results
-                if err ~= self.handler.CODE_CANCELLED then
-                    logger.warn("failed to executeSearch at round", tool_rounds, "DETAIL", search_results,
-                                        content, tool_calls_array)
+                if stream_meta and stream_meta.output_limit_reached
+                    and continuation_rounds < MAX_STREAM_CONTINUATION_ROUNDS
+                then
+                    continuation_rounds = continuation_rounds + 1
+                    if not continuation_parts then
+                        continuation_parts = {}
+                        continuation_start_index = #message_history + 1
+                    end
+                    table.insert(continuation_parts, content)
+                    local assistant_continue_msg = {
+                        role = "assistant",
+                        content = content,
+                    }
+                    ASUtils.set_attr(assistant_continue_msg, "is_stream_continuation", true)
+                    table.insert(message_history, assistant_continue_msg)
+                    local user_continue_msg = {
+                        role = "user",
+                        content = buildStreamContinuationPrompt(),
+                    }
+                    ASUtils.set_attr(user_continue_msg, "is_stream_continuation", true)
+                    table.insert(message_history, user_continue_msg)
+                    logger.info("stream hit output limit; continuing", continuation_rounds, MAX_STREAM_CONTINUATION_ROUNDS)
+                    res = nil
+                    err = nil
+                else
+                    if continuation_parts then
+                        table.insert(continuation_parts, content)
+                        res = table.concat(continuation_parts, "\n\n")
+                        if stream_meta and stream_meta.output_limit_reached then
+                            res = res .. _("\n\n---\n\n**Response stopped after reaching the continuation limit.**")
+                        end
+                    else
+                        res = content
+                    end
+                    err = nil
+                    break
                 end
-                break
             end
-            tool_rounds = tool_rounds + #search_results
 
-            local append_ok, append_err = ToolExecutor.appendToolResult(message_history, {
-                    raw_assistant  = raw_assistant,
-                    format         = format,
-                    search_results = search_results,
-            })
+            if type(content) ~= "string" then
+                -- Tool calls detected in stream
+                if type(tool_calls_array) ~= "table" or #tool_calls_array == 0 then
+                    res = nil
+                    err = _("Stream ended with no content and no tool calls.")
+                    break
+                end
 
-            if not append_ok then
-                res = nil
-                err = append_err
-                logger.warn("failed to appendToolResult", content, tool_calls_array, append_err)
-                break
-            end
-            disableForcedWebSearchAfterUse()
-            if is_added_maximum_prompt or tool_rounds >= MAX_TOOL_ROUNDS then
-                disableWebSearchForFinalAnswer()
+                -- Build tool result and append to history
+                local format = ToolExecutor.getHandlerFormat(self.handler_name)
+                local build_ok, raw_assistant = ToolExecutor.buildRawAssistantForToolCall(tool_calls_array, format, content)
+                if not build_ok then
+                    res = nil
+                    err = raw_assistant
+                    logger.warn("failed to buildRawAssistantForToolCall", content, tool_calls_array)
+                    break
+                end
+
+                local search_ok, search_results
+                search_ok, search_results = executeSearch(tool_calls_array, tool_rounds)
+                if not search_ok then
+                    res = nil
+                    err = search_results
+                    if err ~= self.handler.CODE_CANCELLED then
+                        logger.warn("failed to executeSearch at round", tool_rounds, "DETAIL", search_results,
+                                            content, tool_calls_array)
+                    end
+                    break
+                end
+                tool_rounds = tool_rounds + #search_results
+
+                local append_ok, append_err = ToolExecutor.appendToolResult(message_history, {
+                        raw_assistant  = raw_assistant,
+                        format         = format,
+                        search_results = search_results,
+                })
+
+                if not append_ok then
+                    res = nil
+                    err = append_err
+                    logger.warn("failed to appendToolResult", content, tool_calls_array, append_err)
+                    break
+                end
+                disableForcedWebSearchAfterUse()
+                if is_added_maximum_prompt or tool_rounds >= MAX_TOOL_ROUNDS then
+                    disableWebSearchForFinalAnswer()
+                end
             end
 
             -- Loop again with augmented history; explicit forced search is one-shot.
@@ -518,6 +573,19 @@ function Querier:query(message_history, title)
             err = nil
 
         until type(res) == "string" or (err ~= nil)
+
+        if continuation_start_index then
+            for i = #message_history, continuation_start_index, -1 do
+                local msg = message_history[i]
+                if ASUtils.get_attr(msg, "is_stream_continuation", false) then
+                    table.remove(message_history, i)
+                end
+            end
+            if err and continuation_parts and #continuation_parts > 0 then
+                res = table.concat(continuation_parts, "\n\n")
+                err = nil
+            end
+        end
 
         if self.user_interrupted then
             return nil, _("Request Cancelled by user.")
@@ -713,7 +781,7 @@ function Querier:showStreamDialog(res)
         if #delta == 0 then return end
         updateStreamText(streamDialog, delta, stream_mode_auto_scroll, STREAM_PREVIEW_TAIL_LIMIT)
     end
-    local ok, content, tool_calls_or_err = pcall(self.processStream, self, res, function (content, buffer)
+    local ok, content, tool_calls_or_err, stream_meta = pcall(self.processStream, self, res, function (content, buffer)
         if not first_content_received and content and #content > 0 then
             first_content_received = true
             if animation_task then
@@ -772,7 +840,7 @@ function Querier:showStreamDialog(res)
         return nil, partial_err
     end
 
-    return true, content
+    return true, content, nil, stream_meta
 end
 
 --- func description: run the stream request in the background 
@@ -796,6 +864,7 @@ function Querier:processStream(bgQuery, trunk_callback)
     local tool_call_acc = { current = {}, tools = {} }  -- persistent accumulator: { current={...}, tools={...} }
     local non200_start -- byte offset in result_buffer when non-200 line was received
     local stream_content_seen = false
+    local output_limit_reached = false
     local check_interval_sec = 0.125 -- loop check interval: 125ms  
     local chunksize = 1024 * 16 -- buffer size for reading data
     local completed = false   -- Flag to indicate if the reading is completed
@@ -872,7 +941,9 @@ function Querier:processStream(bgQuery, trunk_callback)
                             if #result_buffer > result_len_before or #reasoning_content_buffer > reasoning_len_before then
                                 stream_content_seen = true
                             end
-                            if signal == "TOOLCALLS" then
+                            if signal == "OUTPUT_LIMIT" then
+                                output_limit_reached = true
+                            elseif signal == "TOOLCALLS" then
                                 -- Normalize tool calls: merge arguments_parts into arguments
                                 tool_calls = {}
                                 for _, tc in ipairs(tool_call_acc.tools) do
@@ -1062,7 +1133,7 @@ function Querier:processStream(bgQuery, trunk_callback)
             ret = ret:sub(close_pos + 8):gsub("^%s+", "", 1)
         end
     end
-    return ret, nil
+    return ret, nil, { output_limit_reached = output_limit_reached }
 end
 
 --- processChunk: parse one SSE event and update the running buffers.
@@ -1240,6 +1311,9 @@ function Querier:processChunk(event, trunk_callback, result_buffer, reasoning_co
         if trunk_callback then trunk_callback(reasoning_content, reasoning_content_buffer) end
     elseif type(stop_reason) == "string" then
         local prefix = stop_reason:sub(1, 3):lower()
+        if isOutputLimitStopReason(stop_reason) then
+            return "OUTPUT_LIMIT"
+        end
         if prefix ~= "too" and              -- tool_call/tool_use
             prefix ~= "sto" and             -- stop
             prefix ~= "end" then            -- end_turn
