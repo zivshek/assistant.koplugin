@@ -25,7 +25,36 @@ end
 -- restores the user's saved charpos+top_line_num, then calls initTextBox.
 -- scrollViewToCharPos receives the saved values so the view stays put.
 -- =========================================================================
-local function updateStreamText(streamDialog, delta, auto_scroll)
+local function setStreamPreviewText(streamDialog, text, auto_scroll)
+    local widget = streamDialog._input_widget
+    widget:setText(text, true)
+    if auto_scroll then
+        widget.charpos = #widget.charlist + 1
+    end
+end
+
+local function updateStreamText(streamDialog, delta, auto_scroll, max_display_chars)
+    delta = delta or ""
+    max_display_chars = tonumber(max_display_chars)
+    if max_display_chars and max_display_chars > 0 then
+        local tail = (streamDialog._stream_preview_tail or "") .. delta
+        local omitted = streamDialog._stream_preview_omitted or 0
+        if #tail > max_display_chars then
+            local excess = #tail - max_display_chars
+            omitted = omitted + excess
+            tail = tail:sub(-max_display_chars)
+        end
+        streamDialog._stream_preview_tail = tail
+        streamDialog._stream_preview_omitted = omitted
+        if omitted > 0 then
+            setStreamPreviewText(streamDialog,
+                string.format("[... %d characters hidden while streaming; full response opens when complete ...]\n\n%s",
+                    omitted, tail),
+                auto_scroll)
+            return
+        end
+    end
+
     if auto_scroll then
         streamDialog:addTextToInput(delta)
     else
@@ -78,7 +107,7 @@ end
 
 -- Driver that mirrors the pending_delta/flush closure and the
 -- reasoning->answer transition in assistant_querier.lua showStreamDialog.
-local function makeStreamDriver(dialog, auto_scroll)
+local function makeStreamDriver(dialog, auto_scroll, max_display_chars)
     local pending_delta = strbuf.new() -- delta since the last UI flush
     local flush_scheduled = false
     local reasoning_was_ended = false
@@ -87,7 +116,7 @@ local function makeStreamDriver(dialog, auto_scroll)
         flush_scheduled = false
         local delta = pending_delta:get()
         if #delta == 0 then return end
-        updateStreamText(dialog, delta, auto_scroll)
+        updateStreamText(dialog, delta, auto_scroll, max_display_chars)
     end
 
     return {
@@ -102,6 +131,8 @@ local function makeStreamDriver(dialog, auto_scroll)
                 dialog._input_widget.charlist = {}
                 dialog._input_widget.charpos = 1
                 dialog._input_widget:initTextBox("", true)
+                dialog._stream_preview_tail = ""
+                dialog._stream_preview_omitted = 0
             end
             pending_delta:put(content or "")
             if not flush_scheduled then
@@ -218,6 +249,19 @@ local tests = {
         assert.equal(#calls.addChars, 0)
     end),
 
+    test("preview cap rebuilds stream dialog with only the latest text", function()
+        local dialog, calls = makeMockDialog()
+        updateStreamText(dialog, "12345", true, 5)
+        updateStreamText(dialog, "67890", true, 5)
+        assert.equal(#calls.addTextToInput, 1,
+            "content under the cap should use the normal append path")
+        assert.equal(#calls.setText, 1,
+            "content over the cap should rebuild the preview instead of appending forever")
+        assert.isTrue(calls.setText[1].text:find("hidden while streaming", 1, true) ~= nil)
+        assert.isTrue(calls.setText[1].text:find("67890", 1, true) ~= nil)
+        assert.equal(dialog._stream_preview_tail, "67890")
+    end),
+
     -- =========================================================================
     -- Flush flow: reasoning->answer transition
     -- =========================================================================
@@ -241,6 +285,19 @@ local tests = {
             end
         end
         assert.isTrue(found_clear, "transition should clear the input text box")
+    end),
+
+    test("flow resets bounded preview when reasoning switches to answer", function()
+        local dialog, calls = makeMockDialog()
+        local driver = makeStreamDriver(dialog, true, 5)
+        driver.onContent("thinking")
+        driver.flush()
+        assert.isTrue((dialog._stream_preview_omitted or 0) > 0)
+        driver.onContent("answer", true)
+        driver.flush()
+        assert.equal(dialog._stream_preview_tail, "answer")
+        assert.equal(dialog._stream_preview_omitted, 0)
+        assert.isTrue(#calls.setText >= 2)
     end),
 
     test("flow auto_scroll=false: pending reasoning is flushed before the transition", function()
