@@ -18,7 +18,7 @@ end
 -- 3. Stub problematic KOReader modules that can't load headless
 --    (UI widgets, android, etc.)
 local stubs = {
-    ["ui/uimanager"]           = { close = function() end, schedule = function() end },
+    ["ui/uimanager"]           = { close = function() end, show = function() end, schedule = function() end },
     ["ui/trapper"]             = { dismissableRunInSubprocess = function(self, fn) return fn() end, clear = function() end },
     ["ui/widget/infomessage"]  = { new = function(_, o) return o end },
     ["ui/widget/textboxwidget"] = {},
@@ -99,6 +99,7 @@ end
 -- 4. Import the real modules we need
 local ASUtils = require("assistant_utils")
 local extools = require("assistant_exttools")
+local ToolExecutor = require("assistant_tool_executor")
 
 -- 5. Assertion helpers
 local M = {}
@@ -168,6 +169,7 @@ function ASUtils.fetchJSON(url, header, trap_widget, timeout, maxtime, post_body
 end
 
 M.extools = extools
+M.ToolExecutor = ToolExecutor
 M.ASUtils = ASUtils
 
 -- 7. Test runner

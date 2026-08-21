@@ -158,6 +158,29 @@ local tests = {
         assert.equal(err, CODE_CANCELLED)
     end),
 
+    test("Tavily: quota status parses usage endpoint", function()
+        helper.mockFetchJSON({
+            { parsed = {
+                key = {
+                    usage = 125,
+                    limit = 1500,
+                    search_usage = 100,
+                },
+                account = {
+                    current_plan = "Researcher",
+                    plan_usage = 125,
+                    plan_limit = 1500,
+                },
+            }, err = nil },
+        })
+        local ok, status = extools.tavilyapi:GetQuotaStatus()
+        assert.isTrue(ok)
+        assert.equal(status.used, 125)
+        assert.equal(status.limit, 1500)
+        assert.equal(status.search_usage, 100)
+        assert.equal(status.plan, "Researcher")
+    end),
+
     -- =========================================================================
     -- SearXNG: SearchKeywords
     -- =========================================================================

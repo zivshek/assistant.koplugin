@@ -88,7 +88,7 @@ function serpapi:AccoutInfo()
 end
 
 local tarvily = SearchToolBase:new({ 
-    name = "Tarvily", base_url = "https://api.tavily.com",
+    name = "Tavily", base_url = "https://api.tavily.com",
     is_external = true,
 })
 function tarvily:SearchKeywords(keywords, trap_widget)
@@ -134,20 +134,47 @@ function tarvily:SearchKeywords(keywords, trap_widget)
     return true, segments:get()
 end
 
-function tarvily:AccoutInfo()
+function tarvily:GetUsageInfo(trap_widget)
     local acc_url  = self.base_url .. "/usage"
     local reqHeaders = { ["Authorization"]="Bearer " .. self.api_key }
-    local parsed, err = ASUtils.fetchJSON(acc_url, reqHeaders, "loading...", 30, 60)
+    local parsed, err = ASUtils.fetchJSON(acc_url, reqHeaders, trap_widget or "loading...", 30, 60)
     if not parsed then
         if err == ASUtils.HANDLERCODE.CODE_CANCELLED then
             return false, ASUtils.HANDLERCODE.CODE_CANCELLED
         end
         return false, err
     end
-    local ret = T("Tarvily API\n\nPlan: %1\nUsed: %2\nLimits: %3",
-        json_default(parsed.account.current_plan, ""),
-        json_default(parsed.account.plan_usage, ""),
-        json_default(parsed.account.plan_limit), "")
+    return true, parsed
+end
+
+function tarvily:GetQuotaStatus(trap_widget)
+    local ok, parsed = self:GetUsageInfo(trap_widget)
+    if not ok then return false, parsed end
+    local key = type(parsed.key) == "table" and parsed.key or {}
+    local account = type(parsed.account) == "table" and parsed.account or {}
+    local used = tonumber(json_default(key.usage)) or tonumber(json_default(account.plan_usage))
+    local limit = tonumber(json_default(key.limit)) or tonumber(json_default(account.plan_limit))
+    return true, {
+        used = used,
+        limit = limit,
+        plan = json_default(account.current_plan, ""),
+        search_usage = tonumber(json_default(key.search_usage)) or tonumber(json_default(account.search_usage)),
+        extract_usage = tonumber(json_default(key.extract_usage)) or tonumber(json_default(account.extract_usage)),
+        crawl_usage = tonumber(json_default(key.crawl_usage)) or tonumber(json_default(account.crawl_usage)),
+        map_usage = tonumber(json_default(key.map_usage)) or tonumber(json_default(account.map_usage)),
+        research_usage = tonumber(json_default(key.research_usage)) or tonumber(json_default(account.research_usage)),
+    }
+end
+
+function tarvily:AccoutInfo()
+    local ok, status = self:GetQuotaStatus("loading...")
+    if not ok then
+        return false, status
+    end
+    local ret = T("Tavily API\n\nPlan: %1\nUsed: %2\nLimits: %3",
+        json_default(status.plan, ""),
+        json_default(status.used, ""),
+        json_default(status.limit), "")
     return true, ret
 end
 

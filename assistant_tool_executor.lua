@@ -97,11 +97,68 @@ end
 
 local ToolExecutor = {}
 ToolExecutor.SEARCH_API_NAMES = SEARCH_API_NAMES
+local search_usage_config = {}
+
+local function numberFromSetting(value)
+    local n = tonumber(value)
+    if not n then return nil end
+    return math.floor(n)
+end
+
+local function getTavilySearchCost()
+    local configured = koutil.tableGetValue(search_usage_config, "features", "tavily_search_credit_cost")
+    local cost = numberFromSetting(configured or 1)
+    if not cost or cost < 1 then cost = 1 end
+    return cost
+end
+
+local function getTavilySafetyBuffer()
+    local configured = koutil.tableGetValue(search_usage_config, "features", "tavily_quota_safety_buffer")
+    local buffer = numberFromSetting(configured or 0)
+    if not buffer or buffer < 0 then buffer = 0 end
+    return buffer
+end
+
+local function isTavilyRemoteQuotaCheckEnabled()
+    local configured = koutil.tableGetValue(search_usage_config, "features", "tavily_remote_quota_check")
+    return configured ~= false
+end
+
+local function checkRemoteSearchUsageLimit(ws_mode)
+    if ws_mode ~= "tavilyapi" or not isTavilyRemoteQuotaCheckEnabled() then
+        return true
+    end
+    local API = ExtTools[ws_mode]
+    if not API or not API.GetQuotaStatus then return true end
+
+    local ok, status = API:GetQuotaStatus()
+    if not ok then
+        return false, T(_("Unable to check Tavily quota before search: %1. Web search was skipped."), status)
+    end
+
+    local used = numberFromSetting(status.used)
+    local limit = numberFromSetting(status.limit)
+    if not used or not limit then
+        return false, _("Unable to read Tavily quota before search. Web search was skipped.")
+    end
+
+    local cost = getTavilySearchCost()
+    local buffer = getTavilySafetyBuffer()
+    if used + cost > limit - buffer then
+        return false, T(
+            _("Tavily remote quota limit reached: %1/%2 credits used. Web search was skipped."),
+            used,
+            limit
+        )
+    end
+    return true
+end
 
 --- Exposed func to set module variable
 function ToolExecutor.SetSearchAPIConfig(CONFIGURATION)
+    search_usage_config = CONFIGURATION or {}
     for api, tool in pairs(ExtTools) do
-        local c = koutil.tableGetValue(CONFIGURATION, "provider_settings", api)
+        local c = koutil.tableGetValue(search_usage_config, "provider_settings", api)
         if c then
             if c.api_key then tool.api_key = c.api_key end
             if c.base_url then tool.base_url = c.base_url:gsub("/+$", "") end -- trim the ending `/`
@@ -134,6 +191,16 @@ function ToolExecutor.executeWebSearch(keywords, ws_mode, handler, tool_round)
         return false, _("Search keywords are empty.")
     end
 
+    local API = ExtTools[ws_mode]
+    if not API then
+        return false, "Unknown web-search mode: " .. tostring(ws_mode)
+    end
+
+    local usage_ok, usage_err = checkRemoteSearchUsageLimit(ws_mode)
+    if not usage_ok then
+        return false, usage_err
+    end
+
     -- Show search indicator
     UIManager:close(handler:resetTrapWidget())
     local keywordmsg = InfoMessage:new({
@@ -147,11 +214,6 @@ function ToolExecutor.executeWebSearch(keywords, ws_mode, handler, tool_round)
 
     -- Execute search API based on mode
     local search_ok, search_result
-    local API = ExtTools[ws_mode]
-    if not API then
-        UIManager:close(keywordmsg)
-        return false, "Unknown web-search mode: " .. tostring(ws_mode)
-    end
     search_ok, search_result = API:SearchKeywords(keywords, keywordmsg)
     if search_ok and type(search_result) == "string" then
         -- remove URLs saving context length

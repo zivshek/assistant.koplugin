@@ -338,7 +338,7 @@ local CONFIGURATION = {
             api_key = "your-serp-api-key"
         },
         tavilyapi = {
-            -- External Search Tool API: Tavily, free tier: 1000 searchs / month
+            -- External Search Tool API: Tavily.
             -- https://www.tavily.com/ 
             api_key = "your-tavily-api-key"
         },
@@ -368,6 +368,9 @@ local CONFIGURATION = {
         ota_github_api_base = "https://api.github.com", -- GitHub API base URL for release metadata
         ota_github_repo = "zivshek/assistant.koplugin", -- GitHub repository for OTA updates
         ota_release_asset_pattern = "assistant.koplugin-%s.zip", -- release asset produced by GitHub Actions; %s is the tag name
+        tavily_search_credit_cost = 1,          -- Expected credits for the next Tavily search preflight.
+        tavily_remote_quota_check = true,       -- Check Tavily /usage before each search to protect shared API keys.
+        tavily_quota_safety_buffer = 0,         -- Reserve this many remote Tavily credits before blocking searches.
         default_folder_for_logs = nil,         -- Set the default folder for auto saved logs, nil for the same folder as the book, ex: "/mnt/onboard/logs/" for Kobo , "/mnt/us/documents/logs/" for Kindle
         max_text_length_for_analysis = 24000,  -- fallback max text length used by book-level analysis
         max_page_size_for_analysis = 50,       -- fallback max page count used by page-based documents, ex: PDF
