@@ -308,39 +308,94 @@ local function otaUpgrade(version)
   UIManager:show(download_msg)
 
   local completed, dl_result, dl_err = Trapper:dismissableRunInSubprocess(function()
-    local socket = require("socket")
     local http = require("socket.http")
     local https = require("ssl.https")
     local ltn12 = require("ltn12")
 
-    local last_err = nil
-    for _, url in ipairs(download_info.urls) do
-      local file_handle = io.open(DL_TAR, "wb")
-      if not file_handle then
-        return false, "Could not create temp file"
-      end
+    https.cert_verify = false
 
-      local sink = ltn12.sink.file(file_handle)
-      local requester = url:sub(1, 8) == "https://" and https or http
-      local status_code = socket.skip(1, requester.request{
-        url = url,
-        method = "GET",
-        sink = sink,
-      })
-
-      if status_code == 200 then
-        return true, nil
+    local function getHeader(headers, name)
+      if not headers then return nil end
+      name = name:lower()
+      for key, value in pairs(headers) do
+        if tostring(key):lower() == name then
+          return value
+        end
       end
-
-      os.remove(DL_TAR)
-      if status_code == 404 then
-        last_err = T(_("Branch/Tag \"%1\" was not found."), version)
-      else
-        last_err = T(_("Download failed: HTTP %1"), tostring(status_code))
-      end
+      return nil
     end
 
-    return false, last_err or _("Download failed")
+    local function resolveRedirectUrl(current_url, location)
+      if not location or location == "" then return nil end
+      if location:match("^https?://") then
+        return location
+      end
+      local scheme, host = current_url:match("^(https?://)([^/]+)")
+      if not scheme or not host then
+        return location
+      end
+      if location:sub(1, 1) == "/" then
+        return scheme .. host .. location
+      end
+      return current_url:gsub("[^/]*$", "") .. location
+    end
+
+    local function downloadUrl(initial_url)
+      local url = initial_url
+      for redirect_count = 0, 5 do
+        local file_handle = io.open(DL_TAR, "wb")
+        if not file_handle then
+          return false, "Could not create temp file"
+        end
+
+        local requester = url:sub(1, 8) == "https://" and https or http
+        local body_sink = ltn12.sink.file(file_handle)
+        local ok, status_code, headers, status = requester.request{
+          url = url,
+          method = "GET",
+          sink = body_sink,
+          headers = {
+            ["User-Agent"] = "KOReader assistant.koplugin OTA",
+          },
+        }
+
+        status_code = tonumber(status_code) or status_code
+        if status_code == 200 then
+          return true, nil
+        end
+
+        os.remove(DL_TAR)
+
+        if status_code == 301 or status_code == 302 or status_code == 303
+            or status_code == 307 or status_code == 308 then
+          local redirected_url = resolveRedirectUrl(url, getHeader(headers, "location"))
+          if redirected_url then
+            url = redirected_url
+          else
+            return false, T(_("Download redirected without a Location header: %1"), initial_url)
+          end
+        else
+          local reason = status or tostring(status_code or ok or _("unknown"))
+          return false, T(_("Download failed: %1\nURL: %2"), reason, url)
+        end
+      end
+
+      return false, T(_("Too many redirects while downloading:\n%1"), initial_url)
+    end
+
+    local last_err = nil
+    for _, url in ipairs(download_info.urls) do
+      local ok, err = downloadUrl(url)
+      if ok then
+        return { ok = true }
+      end
+      last_err = err
+    end
+
+    return {
+      ok = false,
+      err = last_err or _("Download failed before any URL was attempted"),
+    }
   end, download_msg)
 
   UIManager:close(download_msg)
@@ -351,9 +406,10 @@ local function otaUpgrade(version)
     return
   end
 
-  if not dl_result then
+  if type(dl_result) ~= "table" or not dl_result.ok then
     FFIUtil.purgeDir(UPDATE_TMPDIR)
-    Notification:notify(T(_("OTA update failed: %1"), tostring(dl_err)), Notification.SOURCE_ALWAYS_SHOW)
+    local err_msg = type(dl_result) == "table" and dl_result.err or dl_err
+    Notification:notify(T(_("OTA update failed: %1"), tostring(err_msg or _("Unknown download error"))), Notification.SOURCE_ALWAYS_SHOW)
     return
   end
 
