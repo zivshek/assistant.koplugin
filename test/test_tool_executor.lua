@@ -3,6 +3,7 @@
 local helper = require("test.test_helper")
 local assert = helper.assert
 local ToolExecutor = helper.ToolExecutor
+local ASUtils = helper.ASUtils
 
 local function test(name, fn)
     return { name = name, fn = fn }
@@ -87,6 +88,21 @@ local tests = {
         assert.isFalse(ok)
         assert.matches(err, "remote quota limit")
         assert.equal(helper.fetchJSON_call_index, 1)
+    end),
+
+    test("search audit markdown shows tool and query", function()
+        local message = {
+            role = "assistant",
+            content = nil,
+        }
+        ASUtils.set_attr(message, "search_keywords", "⌗ deepseek web search\n\n")
+        ASUtils.set_attr(message, "search_tool_name", "Tavily")
+
+        local audit = ToolExecutor.getSearchAuditMarkdown({ message })
+
+        assert.matches(audit, "Web search used")
+        assert.matches(audit, "Tavily")
+        assert.matches(audit, "deepseek web search")
     end),
 }
 

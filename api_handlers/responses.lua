@@ -194,6 +194,7 @@ end
 --- @param tools     table|nil  tool definitions
 --- @return table requestBody
 function ResponsesHandler:buildRequestBody(messages, query_option, tools)
+    query_option = query_option or {}
     local input_items, instructions = convertMessagesToInput(messages)
 
     local body = {
@@ -217,7 +218,7 @@ function ResponsesHandler:buildRequestBody(messages, query_option, tools)
     -- Tools configuration
     if tools then
         body.tools = tools
-        body.tool_choice = "auto"
+        body.tool_choice = query_option.force_websearch and "required" or "auto"
     end
 
     if query_option.use_stream_mode then

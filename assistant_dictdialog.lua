@@ -8,6 +8,7 @@ local T = require("ffi/util").template
 local Event = require("ui/event")
 local koutil = require("util")
 local ASUtils = require("assistant_utils")
+local ToolExecutor = require("assistant_tool_executor")
 local dict_prompts = require("assistant_prompts").assistant_prompts.dict
 local Prompts = require("assistant_prompts")
 
@@ -438,7 +439,8 @@ local term_xray_prompts = require("assistant_prompts").builtin_prompts.term_xray
         local prev_context_limited = string.sub(prev_context, -100)
         local next_context_limited = string.sub(next_context, 1, 100)
         local normalized_answer = ASUtils.normalizeMarkdownHeadings(answer, 2, 6) or answer
-        return T("... %1 **%2** %3 ...\n\n%4", prev_context_limited, highlightedText, next_context_limited, normalized_answer)
+        local search_audit = ToolExecutor.getSearchAuditMarkdown(message_history)
+        return T("... %1 **%2** %3 ...\n\n%4%5", prev_context_limited, highlightedText, next_context_limited, search_audit, normalized_answer)
     end
 
     local result = createResultText(highlightedText, ret)

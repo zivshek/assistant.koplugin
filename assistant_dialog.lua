@@ -141,8 +141,9 @@ function AssistantDialog:_createResultText(highlightedText, message_history, pre
       local assistant_content, answer_type
       local kw = ASUtils.get_attr(message, "search_keywords")
       if kw then
-        answer_type = _("Search")
-        assistant_content = string.format("%s\n\n", kw)
+        answer_type = _("Web search used")
+        local tool_name = ASUtils.get_attr(message, "search_tool_name") or _("Web search")
+        assistant_content = string.format("- %s: %s\n- %s:\n%s\n\n", _("Tool"), tool_name, _("Query"), kw)
       else
         answer_type =  _("Response")
         assistant_content = message.content or _("(No response)")
@@ -301,6 +302,11 @@ I have a question about this book.]], book.title, book.author)
     role = "user",
     content = user_question
   }
+  if Prompts.isWebSearchEnabled(self.assistant.settings)
+      and ASUtils.detectExplicitWebSearchRequest(user_question) then
+    ASUtils.set_attr(question_message, "use_websearch", true)
+    ASUtils.set_attr(question_message, "force_websearch", true)
+  end
   table.insert(message_history, question_message)
 end
 

@@ -1075,4 +1075,45 @@ function M.runWhenOnlineFast(callback)
   NetworkMgr:runWhenOnline(callback)
 end
 
+function M.detectExplicitWebSearchRequest(text)
+  if type(text) ~= "string" or text == "" then return false end
+
+  local lower = text:lower()
+  local english_patterns = {
+    "web%s+search",
+    "search%s+the%s+web",
+    "search%s+online",
+    "internet%s+search",
+    "look%s+up",
+    "google%s+it",
+    "google%s+this",
+    "use%s+search",
+    "use%s+web",
+    "check%s+online",
+  }
+  for _, pattern in ipairs(english_patterns) do
+    if lower:find(pattern) then return true end
+  end
+
+  local literal_markers = {
+    "联网",
+    "上网",
+    "网上",
+    "網上",
+    "网页搜索",
+    "網頁搜尋",
+    "搜索",
+    "搜尋",
+    "搜一下",
+    "查一下",
+    "查询",
+    "查詢",
+  }
+  for _, marker in ipairs(literal_markers) do
+    if text:find(marker, 1, true) then return true end
+  end
+
+  return false
+end
+
 return M

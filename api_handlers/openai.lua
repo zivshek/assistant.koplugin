@@ -91,6 +91,7 @@ end
 --- @param tools     table|nil  tool definitions (nil → no tool_calls)
 --- @return table    requestBody 
 function OpenAIHandler:buildRequestBody(messages, query_option, tools)
+    query_option = query_option or {}
     local body = {
         model      = self.model,
         messages   = messages,
@@ -102,7 +103,7 @@ function OpenAIHandler:buildRequestBody(messages, query_option, tools)
     end
     if tools then
         body.tools       = tools
-        body.tool_choice = "auto"
+        body.tool_choice = query_option.force_websearch and "required" or "auto"
     end
     if query_option.use_stream_mode then
         body.stream = true

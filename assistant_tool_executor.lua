@@ -40,6 +40,7 @@ local function buildToolResultMessages(tool_call_result)
     local results = tool_call_result.search_results
 
     local keywords = strbuf.new()
+    local search_tool_name = results[1] and results[1].search_tool_name or nil
     local msgs = {}
     if format == "anthropic" then
         table.insert(msgs, {
@@ -57,6 +58,7 @@ local function buildToolResultMessages(tool_call_result)
         end
 
         ASUtils.set_attr(msgs[#msgs], "search_keywords", keywords:get())
+        ASUtils.set_attr(msgs[#msgs], "search_tool_name", search_tool_name)
         table.insert(msgs, {
             role    = "user",
             content = contents,
@@ -76,6 +78,7 @@ local function buildToolResultMessages(tool_call_result)
             keywords:putf("⌗ %s\n\n", result.search_keywords)
         end
         ASUtils.set_attr(msgs[#msgs], "search_keywords", keywords:get())
+        ASUtils.set_attr(msgs[#msgs], "search_tool_name", search_tool_name)
         table.insert(msgs, { role  = "user", parts = parts, })
 
     else  -- "openai"
@@ -90,6 +93,7 @@ local function buildToolResultMessages(tool_call_result)
             keywords:putf("⌗ %s\n\n", result.search_keywords)
         end
         ASUtils.set_attr(msgs[pos], "search_keywords", keywords:get())
+        ASUtils.set_attr(msgs[pos], "search_tool_name", search_tool_name)
     end
     return msgs
 end
@@ -174,6 +178,23 @@ function ToolExecutor.ToolToText(key)
     local tool = ExtTools[key]
     if not tool then return "" end
     return tool.name
+end
+
+function ToolExecutor.getSearchAuditMarkdown(message_history)
+    if type(message_history) ~= "table" then return "" end
+    local segments = strbuf.new()
+    for _, message in ipairs(message_history) do
+        local keywords = ASUtils.get_attr(message, "search_keywords")
+        if keywords and #keywords > 0 then
+            local tool_name = ASUtils.get_attr(message, "search_tool_name") or _("Web search")
+            segments:putf("### %s\n\n", _("Web search used"))
+            segments:putf("- %s: %s\n", _("Tool"), tool_name)
+            segments:putf("- %s:\n%s\n", _("Query"), keywords)
+        end
+    end
+    local text = segments:get()
+    if #text == 0 then return "" end
+    return text .. "\n"
 end
 
 

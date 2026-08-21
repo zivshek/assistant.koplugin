@@ -96,6 +96,14 @@ local tests = {
             )
         end,
     },
+    {
+        name = "detectExplicitWebSearchRequest catches English and Chinese requests",
+        fn = function()
+            assert.isTrue(ASUtils.detectExplicitWebSearchRequest("please search the web for this author"))
+            assert.isTrue(ASUtils.detectExplicitWebSearchRequest("请联网查一下这个作者"))
+            assert.isFalse(ASUtils.detectExplicitWebSearchRequest("who is this character in the book"))
+        end,
+    },
 }
 
 return helper.runTests("context_budget", tests)

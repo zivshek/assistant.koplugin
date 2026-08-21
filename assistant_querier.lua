@@ -290,11 +290,13 @@ function Querier:query(message_history, title)
     end
 
     local prompt_websearch   = ASUtils.get_attr(message_history[#message_history], "use_websearch", false)
+    local force_websearch    = ASUtils.get_attr(message_history[#message_history], "force_websearch", false)
     local user_setting_ws    = self.settings:readSetting("use_websearch", "none")
     local query_option = {
         use_stream_mode = self.settings:readSetting("use_stream_mode", true),
         use_websearch   = (prompt_websearch and user_setting_ws ~= "none")
                           and user_setting_ws or "none",
+        force_websearch = force_websearch and user_setting_ws ~= "none",
     }
 
     local is_added_maximum_prompt = false
@@ -334,6 +336,7 @@ function Querier:query(message_history, title)
             table.insert(search_results, {
                 search_keywords = keywords,
                 search_result = search_result,
+                search_tool_name = ToolExecutor.ToolToText(query_option.use_websearch),
                 tool_call_id = tool_call_id,
             })
         end

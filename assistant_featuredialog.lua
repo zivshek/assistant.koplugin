@@ -12,6 +12,7 @@ local koutil = require("util")
 local ChatGPTViewer = require("assistant_viewer")
 local assistant_prompts = require("assistant_prompts").assistant_prompts
 local Prompts = require("assistant_prompts")
+local ToolExecutor = require("assistant_tool_executor")
 local ASUtils = require("assistant_utils")
 local extractBookTextForAnalysis = ASUtils.extractBookTextForAnalysis
 local extractHighlightsNotesAndNotebook = ASUtils.extractHighlightsNotesAndNotebook
@@ -189,6 +190,7 @@ local function showFeatureDialog(assistant, feature_type, title, author, progres
         normalized_answer = ASUtils.process_suggestions(normalized_answer)
       end
       normalized_answer = normalizeMarkdownHeadings(normalized_answer, 2, 6) or answer
+      local search_audit = ToolExecutor.getSearchAuditMarkdown(message_history)
 
       local header_text = T(_([[
  - Title : %1
@@ -198,7 +200,7 @@ local function showFeatureDialog(assistant, feature_type, title, author, progres
 -----
 
 ]]), title, author, formatted_progress_percent)
-      return header_text .. normalized_answer
+      return header_text .. search_audit .. normalized_answer
     end
 
     local function prepareMessageHistoryForAdditionalQuestion(message_history, user_question, title, author)
