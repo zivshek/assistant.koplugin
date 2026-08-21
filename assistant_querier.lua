@@ -22,7 +22,7 @@ local Prompts = require("assistant_prompts").assistant_prompts
 
 local API_HANDLERS = {}
 local MAX_TOOL_ROUNDS = 3
-local STREAM_PREVIEW_TAIL_LIMIT = 3000
+local STREAM_PREVIEW_TAIL_LIMIT = 6000
 
 -- default_value for rapidjson decoded object
 local function json_default(value, default_value)

@@ -137,8 +137,6 @@ table td, table th {
 }
 ]]
 
-local VIEWER_RENDER_CHAR_LIMIT = 3000
-
 local RTL_CSS = [[
 body {
     direction: rtl !important;
@@ -171,33 +169,6 @@ local ChatGPTViewer = InputContainer:extend {
 
 -- Global variables
 local active_chatgpt_viewer = nil
-
-local function buildRenderPages(text, max_chars)
-  if type(text) ~= "string" or text == "" then
-    return { text or "" }
-  end
-  max_chars = tonumber(max_chars) or VIEWER_RENDER_CHAR_LIMIT
-  if max_chars <= 0 or #text <= max_chars then
-    return { text }
-  end
-
-  local pages = {}
-  local pos = 1
-  while pos <= #text do
-    local chunk = text:sub(pos, pos + max_chars - 1)
-    if pos > 1 then
-      chunk = chunk:gsub("^[\128-\191]+", "")
-    end
-    chunk = koutil.fixUtf8(chunk, "_")
-    if #chunk == 0 then
-      pos = pos + max_chars
-    else
-      table.insert(pages, chunk)
-      pos = pos + #chunk
-    end
-  end
-  return #pages > 0 and pages or { "" }
-end
 
 function ChatGPTViewer:init()
   -- calculate window dimension
@@ -379,25 +350,6 @@ function ChatGPTViewer:init()
     end,
     hold_callback = self.default_hold_callback,
   })
-
-  self._render_pages = buildRenderPages(self.text, VIEWER_RENDER_CHAR_LIMIT)
-  self._render_page_index = 1
-  if #self._render_pages > 1 then
-    table.insert(default_buttons, #(default_buttons), {
-      text = _("Prev"),
-      id = "prev_render_page",
-      callback = function()
-        self:showRenderPage((self._render_page_index or 1) - 1)
-      end,
-    })
-    table.insert(default_buttons, #(default_buttons), {
-      text = _("Next"),
-      id = "next_render_page",
-      callback = function()
-        self:showRenderPage((self._render_page_index or 1) + 1)
-      end,
-    })
-  end
   
   local buttons = self.buttons_table or {}
   if self.add_default_buttons or not self.buttons_table then
@@ -546,7 +498,6 @@ function ChatGPTViewer:init()
     zero_sep = true,
     show_parent = self,
   }
-  self:_updateRenderPageButtons()
 
   local textw_height = self.height - titlebar:getHeight() - self.button_table:getSize().h
 
@@ -1002,28 +953,12 @@ function ChatGPTViewer:_buildCSS()
   return VIEWER_CSS .. (rtl and RTL_CSS or "")
 end
 
-function ChatGPTViewer:_getRenderText()
-  local pages = self._render_pages or buildRenderPages(self.text, VIEWER_RENDER_CHAR_LIMIT)
-  self._render_pages = pages
-  local index = self._render_page_index or 1
-  if index < 1 then index = 1 end
-  if index > #pages then index = #pages end
-  self._render_page_index = index
-  local page_text = pages[index] or ""
-  if #pages > 1 then
-    return T(_("Page %1/%2. Full response is kept for Copy and Save.\n\n---\n\n%3"),
-      index, #pages, page_text)
-  end
-  return page_text
-end
-
 function ChatGPTViewer:_renderMarkdown()
-  local render_text = self:_getRenderText()
-  local html_body, err = MD(render_text)
+  local html_body, err = MD(self.text)
   if err then
     logger.warn("ChatGPTViewer: could not generate HTML", err)
     -- Fallback to plain text if HTML generation fails
-    html_body = render_text or "Missing text."
+    html_body = self.text or "Missing text."
   end
   return html_body
 end
@@ -1045,47 +980,11 @@ function ChatGPTViewer:_buildScrollWidget(outer_height)
   }
 end
 
-function ChatGPTViewer:_updateRenderPageButtons()
-  if not self.button_table then return end
-  local pages = self._render_pages or {}
-  local index = self._render_page_index or 1
-  local prev_button = self.button_table:getButtonById("prev_render_page")
-  local next_button = self.button_table:getButtonById("next_render_page")
-  if prev_button then
-    if index > 1 then prev_button:enable() else prev_button:disable() end
-    prev_button:refresh()
-  end
-  if next_button then
-    if index < #pages then next_button:enable() else next_button:disable() end
-    next_button:refresh()
-  end
-end
-
-function ChatGPTViewer:showRenderPage(page_index)
-  local pages = self._render_pages or buildRenderPages(self.text, VIEWER_RENDER_CHAR_LIMIT)
-  self._render_pages = pages
-  page_index = tonumber(page_index) or 1
-  if page_index < 1 then page_index = 1 end
-  if page_index > #pages then page_index = #pages end
-  if page_index == self._render_page_index then return end
-  self._render_page_index = page_index
-  self.scroll_text_w = self:_buildScrollWidget(self.textw:getSize().h)
-  self.textw:clear()
-  self.textw[1] = self.scroll_text_w
-  self.scroll_text_w:scrollToPage(1)
-  self:_updateRenderPageButtons()
-  UIManager:setDirty(self, function()
-    return "partial", self.frame.dimen
-  end)
-end
-
 function ChatGPTViewer:update(new_text)
   -- Check if the new text is substantially different from the current text
   if not self.text or #new_text > #self.text then
     -- Update the text
     self.text = new_text
-    self._render_pages = buildRenderPages(self.text, VIEWER_RENDER_CHAR_LIMIT)
-    self._render_page_index = #self._render_pages
 
     -- remenber the last page number
     local last_page_num = self.scroll_text_w.htmlbox_widget.page_count
@@ -1102,7 +1001,6 @@ function ChatGPTViewer:update(new_text)
       -- a delay scroll makes the scroll bar in correct position
       self.scroll_text_w:scrollToPage(last_page_num)
     end)
-    self:_updateRenderPageButtons()
   end
 end
 
