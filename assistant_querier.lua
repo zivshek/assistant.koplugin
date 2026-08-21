@@ -22,7 +22,6 @@ local Prompts = require("assistant_prompts").assistant_prompts
 
 local API_HANDLERS = {}
 local MAX_TOOL_ROUNDS = 3
-local STREAM_PREVIEW_TAIL_LIMIT = 6000
 
 -- default_value for rapidjson decoded object
 local function json_default(value, default_value)
@@ -244,42 +243,7 @@ end
 -- charlist, restore the user's charpos+top_line_num, then call initTextBox
 -- so that scrollViewToCharPos gets the saved values and preserves the view.
 -- Pure helper, kept as a local so it can be inlined in tests.
-local function resetStreamPreview(streamDialog)
-    streamDialog._stream_preview_tail = ""
-    streamDialog._stream_preview_omitted = 0
-end
-
-local function setStreamPreviewText(streamDialog, text, auto_scroll)
-    local widget = streamDialog._input_widget
-    widget:setText(text, true)
-    if auto_scroll then
-        widget.charpos = #widget.charlist + 1
-    end
-end
-
-local function updateStreamText(streamDialog, delta, auto_scroll, max_display_chars)
-    delta = delta or ""
-    max_display_chars = tonumber(max_display_chars)
-    if max_display_chars and max_display_chars > 0 then
-        local tail = (streamDialog._stream_preview_tail or "") .. delta
-        local omitted = streamDialog._stream_preview_omitted or 0
-        if #tail > max_display_chars then
-            local excess = #tail - max_display_chars
-            omitted = omitted + excess
-            tail = tail:sub(-max_display_chars):gsub("^[\128-\191]+", "")
-            tail = koutil.fixUtf8(tail, "_")
-        end
-        streamDialog._stream_preview_tail = tail
-        streamDialog._stream_preview_omitted = omitted
-        if omitted > 0 then
-            setStreamPreviewText(streamDialog,
-                T(_("[... %1 characters hidden while streaming; full response opens when complete ...]\n\n%2"),
-                    omitted, tail),
-                auto_scroll)
-            return
-        end
-    end
-
+local function updateStreamText(streamDialog, delta, auto_scroll)
     if auto_scroll then
         -- auto_scroll=false path may have left charpos at a mid-text
         -- scroll position; force it to the end so addChars appends there
@@ -688,7 +652,6 @@ function Querier:showStreamDialog(res)
     streamDialog.title_bar.close_callback = _closeStreamDialog
     streamDialog.title_bar:init()
     UIManager:show(streamDialog)
-    resetStreamPreview(streamDialog)
 
     -- Set up waiting animation
     local animation = createWaitingAnimation()
@@ -711,7 +674,7 @@ function Querier:showStreamDialog(res)
         flush_scheduled = false
         local delta = pending_delta:get()
         if #delta == 0 then return end
-        updateStreamText(streamDialog, delta, stream_mode_auto_scroll, STREAM_PREVIEW_TAIL_LIMIT)
+        updateStreamText(streamDialog, delta, stream_mode_auto_scroll)
     end
     local ok, content, tool_calls_or_err = pcall(self.processStream, self, res, function (content, buffer)
         if not first_content_received and content and #content > 0 then
@@ -721,7 +684,6 @@ function Querier:showStreamDialog(res)
                 animation_task = nil
             end
             streamDialog._input_widget:setText("", true) -- Clear the animation
-            resetStreamPreview(streamDialog)
         end
         if first_content_received then
             if self.reasoning_phase_ended and not reasoning_was_ended then
@@ -733,7 +695,6 @@ function Querier:showStreamDialog(res)
                 streamDialog._input_widget.charlist = {}
                 streamDialog._input_widget.charpos = 1
                 streamDialog._input_widget:initTextBox("", true)
-                resetStreamPreview(streamDialog)
             end
             pending_delta:put(content or "")
             if not flush_scheduled then
