@@ -21,6 +21,67 @@ local Notebook = require("assistant_notebook")
 local M = {}
 local shared_buf = strbuf.new()
 
+local DEFAULT_ANALYSIS_CONTEXT_CHARS = 24000
+
+local function readPositiveNumber(CONFIGURATION, key, default_value)
+    if not CONFIGURATION then
+        return default_value
+    end
+    local value = koutil.tableGetValue(CONFIGURATION, "features", key)
+    value = tonumber(value)
+    if value and value > 0 then
+        return math.floor(value)
+    end
+    return default_value
+end
+
+function M.getContextCharLimit(CONFIGURATION, key, default_value)
+    return readPositiveNumber(CONFIGURATION, key, default_value or DEFAULT_ANALYSIS_CONTEXT_CHARS)
+end
+
+function M.truncateForPrompt(text, max_chars, keep)
+    if type(text) ~= "string" or text == "" then
+        return text or ""
+    end
+    max_chars = tonumber(max_chars)
+    if not max_chars or max_chars <= 0 or #text <= max_chars then
+        return text
+    end
+
+    local omitted = #text - max_chars
+    local suffix = T(_("\n\n[... %1 characters omitted for token budget ...]\n\n"), omitted)
+    if #suffix >= max_chars then
+        suffix = "\n[...]\n"
+    end
+    local budget = math.max(1, max_chars - #suffix)
+    local trimmed
+
+    if keep == "head" then
+        trimmed = text:sub(1, budget) .. suffix
+    else
+        trimmed = suffix .. text:sub(-budget)
+    end
+
+    trimmed = trimmed:gsub("^[\128-\191]+", "")
+    return util.fixUtf8(trimmed, "_")
+end
+
+function M.omitLargeContextBlocks(content)
+    if type(content) ~= "string" or content == "" then
+        return content
+    end
+
+    content = content:gsub(
+        "%[BOOK TEXT BEGIN%].-%[BOOK TEXT END%]",
+        "[BOOK TEXT OMITTED FROM FOLLOW-UP CONTEXT]"
+    )
+    content = content:gsub(
+        "%[BOOK HIGHLIGHTS, NOTES AND NOTEBOOK CONTENT BEGIN%].-%[BOOK HIGHLIGHTS, NOTES AND NOTEBOOK CONTENT END%]",
+        "[BOOK HIGHLIGHTS, NOTES AND NOTEBOOK CONTENT OMITTED FROM FOLLOW-UP CONTEXT]"
+    )
+    return content
+end
+
 function M.getGeneralNotebookFilePath(assistant)
   if Notebook.isEnabled(assistant) then
     local notebook, err, warning = Notebook.getActive(assistant)
@@ -33,7 +94,7 @@ function M.getGeneralNotebookFilePath(assistant)
   return Notebook.getLegacyPath(assistant)
 end
 
-function M.extractBookTextForAnalysis(CONFIGURATION, ui)
+function M.extractBookTextForAnalysis(CONFIGURATION, ui, max_chars, max_pages)
     local book_text = nil
       if not ui.document.info.has_pages then
           -- Only extract text for EPUB documents
@@ -42,17 +103,14 @@ function M.extractBookTextForAnalysis(CONFIGURATION, ui)
           local start_xp = ui.document:getXPointer()
           ui.document:gotoXPointer(current_xp)
           book_text = ui.document:getTextFromXPointers(start_xp, current_xp) or ""
-          local max_text_length_for_analysis = koutil.tableGetValue(CONFIGURATION, "features", "max_text_length_for_analysis") or 100000
-          if #book_text > max_text_length_for_analysis then
-              book_text = book_text:sub(-max_text_length_for_analysis)
-              book_text = book_text:gsub("^[\128-\191]+", "")
-              book_text = util.fixUtf8(book_text, "_")
-          end
+          local max_text_length_for_analysis = max_chars or readPositiveNumber(
+              CONFIGURATION, "max_text_length_for_analysis", DEFAULT_ANALYSIS_CONTEXT_CHARS)
+          book_text = M.truncateForPrompt(book_text, max_text_length_for_analysis, "tail")
       else
         -- Extract text from the last n pages up to current reading position for page-based documents
         local current_page = ui.view.state.page
         local total_pages = ui.document:getPageCount()
-        local max_page_size_for_analysis = koutil.tableGetValue(CONFIGURATION, "features", "max_page_size_for_analysis") or 250
+        local max_page_size_for_analysis = max_pages or readPositiveNumber(CONFIGURATION, "max_page_size_for_analysis", 50)
         local start_page = math.max(1, current_page - max_page_size_for_analysis)
         local buf = shared_buf
         buf:reset()
@@ -75,17 +133,14 @@ function M.extractBookTextForAnalysis(CONFIGURATION, ui)
             buf:put(page_text, "\n")
         end
         book_text = buf:get()
-        local max_text_length_for_analysis = koutil.tableGetValue(CONFIGURATION, "features", "max_text_length_for_analysis") or 100000
-        if #book_text > max_text_length_for_analysis then
-            book_text = book_text:sub(-max_text_length_for_analysis)
-            book_text = book_text:gsub("^[\128-\191]+", "")
-            book_text = util.fixUtf8(book_text, "_")
-        end
+        local max_text_length_for_analysis = max_chars or readPositiveNumber(
+            CONFIGURATION, "max_text_length_for_analysis", DEFAULT_ANALYSIS_CONTEXT_CHARS)
+        book_text = M.truncateForPrompt(book_text, max_text_length_for_analysis, "tail")
     end
     return book_text
 end
 
-function M.extractHighlightsNotesAndNotebook(CONFIGURATION, ui, include_notebook)
+function M.extractHighlightsNotesAndNotebook(CONFIGURATION, ui, include_notebook, max_chars)
     local highlights_and_notes = ""
     if ui.annotation and ui.annotation.annotations then
         local buf = shared_buf
@@ -137,12 +192,9 @@ function M.extractHighlightsNotesAndNotebook(CONFIGURATION, ui, include_notebook
         end
     end
     
-    local max_text_length_for_analysis = koutil.tableGetValue(CONFIGURATION, "features", "max_text_length_for_analysis") or 100000
-    if #combined > max_text_length_for_analysis then
-        combined = combined:sub(-max_text_length_for_analysis)
-        combined = combined:gsub("^[\128-\191]+", "")
-        combined = util.fixUtf8(combined, "_")
-    end
+    local max_text_length_for_analysis = max_chars or readPositiveNumber(
+        CONFIGURATION, "max_text_length_for_analysis", DEFAULT_ANALYSIS_CONTEXT_CHARS)
+    combined = M.truncateForPrompt(combined, max_text_length_for_analysis, "tail")
     
     return combined
 end

@@ -33,6 +33,9 @@ local function showFeatureDialog(assistant, feature_type, title, author, progres
     local feature_title, loading_message, system_prompt, user_prompt_template, user_prompt_use_websearch, book_text, highlights_notes
 
     local language = assistant.settings:readSetting("response_language") or assistant.ui_language
+    local book_context_limit = ASUtils.getContextCharLimit(CONFIGURATION, "feature_context_char_limit", 24000)
+    local book_context_page_limit = ASUtils.getContextCharLimit(CONFIGURATION, "feature_context_page_limit", 50)
+    local notes_context_limit = ASUtils.getContextCharLimit(CONFIGURATION, "notes_context_char_limit", 16000)
 
     if type(feature_type) == "table" then
         -- Custom feature from configuration
@@ -47,12 +50,12 @@ local function showFeatureDialog(assistant, feature_type, title, author, progres
         book_text = nil
         highlights_notes = nil
         if custom_config.use_book_text and custom_config.use_book_text == true then
-            book_text = extractBookTextForAnalysis(CONFIGURATION, ui)
+            book_text = extractBookTextForAnalysis(CONFIGURATION, ui, book_context_limit, book_context_page_limit)
         end
         if custom_config.use_highlight_with_notebook and custom_config.use_highlight_with_notebook == true then
-            highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui, true)
+            highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui, true, notes_context_limit)
         elseif custom_config.use_highlight_without_notebook and custom_config.use_highlight_without_notebook == true then
-            highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui, false)
+            highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui, false, notes_context_limit)
         end
     else
         -- Original feature type handling
@@ -124,13 +127,13 @@ local function showFeatureDialog(assistant, feature_type, title, author, progres
         highlights_notes = nil
         if feature_type == "xray" or feature_type == "recap" then
           if assistant.settings:readSetting("use_book_text_for_analysis", false) then
-            book_text = extractBookTextForAnalysis(CONFIGURATION, ui)
+            book_text = extractBookTextForAnalysis(CONFIGURATION, ui, book_context_limit, book_context_page_limit)
           end
         elseif feature_type == "annotations" then
-          highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui,true)
+          highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui, true, notes_context_limit)
         elseif feature_type == "summary_using_annotations" then
-          book_text = extractBookTextForAnalysis(CONFIGURATION, ui)
-          highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui,false)
+          book_text = extractBookTextForAnalysis(CONFIGURATION, ui, book_context_limit, book_context_page_limit)
+          highlights_notes = extractHighlightsNotesAndNotebook(CONFIGURATION, ui, false, notes_context_limit)
         end
     end
 

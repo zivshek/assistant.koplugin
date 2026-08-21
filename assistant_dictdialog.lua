@@ -221,7 +221,12 @@ local term_xray_prompts = require("assistant_prompts").builtin_prompts.term_xray
         local LexRankLanguages = require("assistant_lexrank_languages")
 
         -- Get book text up to current reading position
-        local book_text = ASUtils.extractBookTextForAnalysis(CONFIGURATION, ui)
+        local book_text = ASUtils.extractBookTextForAnalysis(
+            CONFIGURATION,
+            ui,
+            ASUtils.getContextCharLimit(CONFIGURATION, "term_xray_source_context_char_limit", 36000),
+            ASUtils.getContextCharLimit(CONFIGURATION, "term_xray_source_page_limit", 60)
+        )
 
         if book_text and #book_text > 100 then
             -- Tokenize sentences once (will be reused for all filtering and context expansion)
@@ -254,7 +259,7 @@ local term_xray_prompts = require("assistant_prompts").builtin_prompts.term_xray
             local all_candidates = LexRank.rank_sentences(book_text, threshold_very_inclusive, 0.1, dict_language, CONFIGURATION.features, true)
 
             -- Filter candidates at different levels using their scores (no re-tokenization needed!)
-            local max_characters = koutil.tableGetValue(CONFIGURATION, "features", "term_xray_max_characters") or 100000
+            local max_characters = ASUtils.getContextCharLimit(CONFIGURATION, "term_xray_context_char_limit", 16000)
             local selected_indices = {}
             local seen_indices = {}
 
@@ -312,9 +317,7 @@ local term_xray_prompts = require("assistant_prompts").builtin_prompts.term_xray
             context_text = table.concat(context_sentences, " ")
 
             -- Truncate context to max_characters limit
-            if #context_text > max_characters then
-                context_text = context_text:sub(1, max_characters)
-            end
+            context_text = ASUtils.truncateForPrompt(context_text, max_characters, "head")
 
             context_sentence_count = #context_sentences
         else

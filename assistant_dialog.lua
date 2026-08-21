@@ -52,6 +52,11 @@ function AssistantDialog:_formatUserPrompt(user_prompt, highlightedText, user_in
   
   -- Handle case where no text is highlighted (gesture-triggered)
   local text_to_use = highlightedText and highlightedText ~= "" and highlightedText or ""
+  text_to_use = ASUtils.truncateForPrompt(
+    text_to_use,
+    ASUtils.getContextCharLimit(self.CONFIGURATION, "highlight_context_char_limit", 16000),
+    "head"
+  )
   local language = self.assistant.settings:readSetting("response_language") or self.assistant.ui_language
   
   -- Calculate progress if placeholder is present  
@@ -263,11 +268,16 @@ end
 function AssistantDialog:_prepareMessageHistoryForUserQuery(message_history, highlightedText, user_question)
   local book = self:_getBookContext()
   local content
+  local highlight_context = ASUtils.truncateForPrompt(
+    highlightedText or "",
+    ASUtils.getContextCharLimit(self.CONFIGURATION, "highlight_context_char_limit", 16000),
+    "head"
+  )
   if highlightedText and highlightedText ~= "" then
     content = string.format([[I'm reading something titled '%s' by %s.
 I have a question about the following highlighted text: ```%s```.
 If the question is not clear enough, analyze the highlighted text.]],
-      book.title, book.author, highlightedText)
+      book.title, book.author, highlight_context)
   elseif book.title and book.author then
     content = string.format([[I'm reading something titled '%s' by %s.
 I have a question about this book.]], book.title, book.author)
@@ -390,7 +400,12 @@ function AssistantDialog:show(highlightedText)
         local user_question = self.input_dialog and self.input_dialog:getInputText() or ""
         local book_text_prompt = ""
         if use_book_text_checkbox and use_book_text_checkbox.checked then
-          local book_text = extractBookTextForAnalysis(self.CONFIGURATION, self.assistant.ui)
+          local book_text = extractBookTextForAnalysis(
+            self.CONFIGURATION,
+            self.assistant.ui,
+            ASUtils.getContextCharLimit(self.CONFIGURATION, "ask_context_char_limit", 12000),
+            ASUtils.getContextCharLimit(self.CONFIGURATION, "ask_context_page_limit", 30)
+          )
           if book_text then
             book_text_prompt = string.format("\n\n [! IMPORTANT !] Here is the book text up to my current position, only consider this text for your response, and answer in language of previous part of the question:\n [BOOK TEXT BEGIN]\n%s\n[BOOK TEXT END]", book_text)
           end
@@ -468,8 +483,13 @@ function AssistantDialog:show(highlightedText)
               self.assistant.quicknote:saveNote(user_question, highlightedText)
             else
               local book_text_prompt = ""
-              if use_book_text_checkbox.checked then
-                local book_text = extractBookTextForAnalysis(self.CONFIGURATION, self.assistant.ui)
+              if use_book_text_checkbox and use_book_text_checkbox.checked then
+                local book_text = extractBookTextForAnalysis(
+                  self.CONFIGURATION,
+                  self.assistant.ui,
+                  ASUtils.getContextCharLimit(self.CONFIGURATION, "ask_context_char_limit", 12000),
+                  ASUtils.getContextCharLimit(self.CONFIGURATION, "ask_context_page_limit", 30)
+                )
                 if book_text then
                   book_text_prompt = string.format("\n\n[! IMPORTANT !] Here is the book text up to my current position, only consider this text for your response:\n [BOOK TEXT BEGIN]\n%s\n[BOOK TEXT END]", book_text)
                 end

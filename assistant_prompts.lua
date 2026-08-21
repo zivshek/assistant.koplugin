@@ -25,36 +25,27 @@ Standard Markdown formatting (including quotes, tables, lists) is fully supporte
 local builtin_prompts = {
     term_xray = {
         text = _("Term X-Ray"),
-        use_websearch = true,
+        use_websearch = false,
         order = -20, -- negative number to not show on additional questions dialog
         desc = _("This prompt creates a structured system for generating context-aware definitions of words or phrases from literature by analyzing the highlighted term within its surrounding text to provide nuanced explanations that capture both literal meaning and contextual significance."),
         system_prompt = markdown_format_prompt,
         user_prompt = T([[
-## Your Role
-You are a context-aware literary assistant for a reading app's "X-Ray" feature. Your task is to explain the highlighted term "{highlight}" specifically as it functions in "{title}" by {author}, strictly using the provided {context_sentence_count} chronological context sentences.
-
-## Core Guidelines
-1. **Strictly Context-Bound**: Rely *only* on the provided context. Do not use external general knowledge. If information is missing or limited, explicitly state it in the final section.
-2. **Pronoun Resolution**: Pay close attention to pronouns (he/she/it/they/this) in the context to correctly trace the identity, actions, and relationships of "{highlight}".
-3. **Chronological Tracking**: Use the chronological order of the sentences to track how the term develops or how understanding of it deepens over time.
-4. **Language**: Render the *entire* response (including headers) completely in {language}.
-
-## Analysis Structure
-Generate a clear, accessible analysis (approx. 300-400 words, present tense, fluid prose) using these headers:
+Explain "{highlight}" as it functions in "{title}" by {author}.
+Use only the provided book context, resolve pronouns carefully, avoid spoilers beyond it, and answer entirely in {language}.
+Keep the answer concise, about 150-250 words, with these headers:
 
 ### %1
-Define/describe "{highlight}" based on the context. Identify its nature (whether it is a character, object, location, or concept) and its core traits, physical descriptions, or basic rules.
+Identify what "{highlight}" is in this context.
 
 ### %2
-Explain how this term functions in the narrative. What do they/it do? What are the motivations, uses, effects, or relationships shown in the context?
+Explain its role, actions, relationships, or effects shown here.
 
 ### %3
-Track how understanding of this term changes from the early to late context sentences. Detail how it connects to other characters, places, or elements mentioned.
+Note important changes or connections across the context.
 
 ### %4
-Briefly note what important information appears to be missing or what questions are left unanswered due to the limited context provided.
+Briefly state what remains unclear from the limited context.
 
-## Inputs
 * **User Input**: {user_input}
 * **Context from the Book**: 
 {context}
@@ -537,28 +528,21 @@ Now begin the analysis with the provided book_text and highlights.]],
     },
 
     dict = {
-        use_websearch = true,
+        use_websearch = false,
         system_prompt = markdown_format_prompt,
         user_prompt = T([[
-## Task: Book-Aware Word Analysis
-Explain "{word}" as used in "{title}" by {author}, strictly based on the context below.
-
-## Context from the Book
+Explain "{word}" as used in "{title}" by {author}. Use only this context:
 {context}
 
-## Execution Rules
-1. **Language**: The entire response, including all headers and labels, must be strictly rendered in {language}. (Except for the "%6" sentence itself).
-2. **Book-Awareness**: Focus heavily on how "{word}" functions in this specific book. Contrast its dictionary definition with its narrative, thematic, or worldbuilding usage.
-3. **Output**: Start directly with the structured analysis. Do NOT include any introductory or concluding commentary.
+Answer entirely in {language}, start directly, and keep each item brief.
 
-## Output Structure
-* ** %1 **: Vocabulary in original conjugation if different from the form in the sentence.
-* ** %2 **: Up to 3 synonyms, noting which are most relevant to the book's usage.
-* ** %3 **: Literal meaning of the expression without any context.
-* ** %4 **: Translation of the whole sentence containing the word. Highlight **{word}** in bold.
-* ** %5 **: How "{word}" is specifically used in THIS BOOK. Explain what it suggests about characters, tone, or themes.
-* ** %6 **: Another example sentence showing the word's use, preferably from the same literary genre.
-* ** %7 **: Origins, etymology, or significance of the word.
+* ** %1 **: Form in the sentence, if different from the base form.
+* ** %2 **: Up to 3 relevant synonyms.
+* ** %3 **: Literal meaning.
+* ** %4 **: Translate the sentence containing the word; bold **{word}**.
+* ** %5 **: Specific meaning or effect in this book.
+* ** %6 **: One short example sentence.
+* ** %7 **: Brief origin or significance, if useful.
 ]],
             -- @translators used in the dictionary.
             _("Conjugation"),

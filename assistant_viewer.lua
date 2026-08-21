@@ -909,9 +909,33 @@ end
 function ChatGPTViewer:trimMessageHistory()
   if not self.message_history then return end
 
-  --- TODO: context should be compressed, not trimmed
-  --- 
-  return
+  local history = self.message_history
+  local features = self.assistant and self.assistant.CONFIGURATION
+      and self.assistant.CONFIGURATION.features or {}
+  local max_messages = tonumber(features.conversation_history_max_messages) or 10
+  local max_message_chars = tonumber(features.conversation_message_char_limit) or 4000
+
+  local latest_context_index = nil
+  for i = #history, 2, -1 do
+    if ASUtils.get_attr(history[i], "is_context") then
+      latest_context_index = i
+      break
+    end
+  end
+
+  for i = #history - 1, 2, -1 do
+    local message = history[i]
+    if ASUtils.get_attr(message, "is_context") and i ~= latest_context_index then
+      table.remove(history, i)
+    elseif type(message.content) == "string" then
+      message.content = ASUtils.omitLargeContextBlocks(message.content)
+      message.content = ASUtils.truncateForPrompt(message.content, max_message_chars, "head")
+    end
+  end
+
+  while #history > max_messages + 1 do
+    table.remove(history, 2)
+  end
 end
 
 function ChatGPTViewer:html_link_tapped_callback(link)
