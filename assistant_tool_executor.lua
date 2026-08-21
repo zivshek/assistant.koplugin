@@ -48,7 +48,7 @@ local function buildToolResultMessages(tool_call_result)
             content = raw_assistant,
         })
         local contents = {}
-        for _, result in ipairs(results) do
+        for result_idx, result in ipairs(results) do
             table.insert(contents, {
                     type        = "tool_result",
                     tool_use_id = result.tool_call_id,
@@ -67,7 +67,7 @@ local function buildToolResultMessages(tool_call_result)
         table.insert(msgs, raw_assistant)   -- model turn (role="model", parts=[functionCall…])
 
         local parts = {}
-        for _, result in ipairs(results) do
+        for result_idx, result in ipairs(results) do
             table.insert(parts, {
                     functionResponse = {
                         name     = "web_search",
@@ -84,7 +84,7 @@ local function buildToolResultMessages(tool_call_result)
     else  -- "openai"
         table.insert(msgs, raw_assistant)
         local pos = #msgs
-        for _, result in ipairs(results) do
+        for result_idx, result in ipairs(results) do
             table.insert(msgs, {
                 role         = "tool",
                 tool_call_id = result.tool_call_id,
@@ -183,7 +183,7 @@ end
 function ToolExecutor.getSearchAuditMarkdown(message_history)
     if type(message_history) ~= "table" then return "" end
     local segments = strbuf.new()
-    for _, message in ipairs(message_history) do
+    for message_idx, message in ipairs(message_history) do
         local keywords = ASUtils.get_attr(message, "search_keywords")
         if keywords and #keywords > 0 then
             local tool_name = ASUtils.get_attr(message, "search_tool_name") or _("Web search")
@@ -269,7 +269,7 @@ function ToolExecutor.buildRawAssistantForToolCall(tool_calls, format, contents)
             end
             table.insert(ret, tc)
         end
-        for _, tc in ipairs(tool_calls) do
+        for tc_idx, tc in ipairs(tool_calls) do
             local id, kw, err = ToolExecutor.extractKeywords(tc)
             if err then
                 return false, err
@@ -285,7 +285,7 @@ function ToolExecutor.buildRawAssistantForToolCall(tool_calls, format, contents)
     elseif format == "gemini" then
         -- Gemini expects a model turn (role="model")
         local parts = {}
-        for _, tc in ipairs(tool_calls) do
+        for tc_idx, tc in ipairs(tool_calls) do
             table.insert(parts, {
                     functionCall = {
                         name = "web_search",
@@ -300,7 +300,7 @@ function ToolExecutor.buildRawAssistantForToolCall(tool_calls, format, contents)
         return true, { role  = "model", parts = parts, }
     else  -- "openai" (and compatible: groq, openrouter, deepseek, mistral, etc.)
         local raw_tool_calls = {}
-        for _, tc in ipairs(tool_calls) do
+        for tc_idx, tc in ipairs(tool_calls) do
             table.insert(raw_tool_calls, {
                     id        = tc.id,
                     type     = "function",
@@ -339,7 +339,7 @@ function ToolExecutor.appendToolResult(message_history, tool_call_result)
         return false, "Failed to build tool result messages"
     end
 
-    for _, msg in ipairs(tool_msgs) do
+    for msg_idx, msg in ipairs(tool_msgs) do
         table.insert(message_history, msg)
     end
 
@@ -424,7 +424,7 @@ function ToolExecutor.parseToolCallsResponse(responseData, format)
 
         local text_block
         local toolcall_blocks = {}
-        for _, block in ipairs(content_blocks) do
+        for block_idx, block in ipairs(content_blocks) do
             if type(block) == "table" then
                 if block.type == "text" then
                     text_block = block
@@ -451,7 +451,7 @@ function ToolExecutor.parseToolCallsResponse(responseData, format)
         end
         local tool_calls = {}
         local text_part
-        for _, part in ipairs(model_content.parts) do
+        for part_idx, part in ipairs(model_content.parts) do
             if type(part) == "table" then
                 if part.functionCall then 
                     local fn_call   = part.functionCall 
@@ -481,7 +481,7 @@ function ToolExecutor.parseToolCallsResponse(responseData, format)
 
         local tool_calls = {}
         local text_parts = {}
-        for _, item in ipairs(output_items) do
+        for item_idx, item in ipairs(output_items) do
             if type(item) == "table" then
                 if item.type == "function_call" then
                     table.insert(tool_calls, {
@@ -492,7 +492,7 @@ function ToolExecutor.parseToolCallsResponse(responseData, format)
                 elseif item.type == "message" then
                     local content = item.content
                     if type(content) == "table" then
-                        for _, block in ipairs(content) do
+                        for block_idx, block in ipairs(content) do
                             if block.type == "output_text" and block.text then
                                 table.insert(text_parts, block.text)
                             end
@@ -512,7 +512,7 @@ function ToolExecutor.parseToolCallsResponse(responseData, format)
 
         -- Build raw_assistant in OpenAI format
         local raw_tool_calls = {}
-        for _, tc in ipairs(tool_calls) do
+        for tc_idx, tc in ipairs(tool_calls) do
             table.insert(raw_tool_calls, {
                 id        = tc.tool_call_id,
                 type      = "function",
@@ -545,7 +545,7 @@ function ToolExecutor.parseToolCallsResponse(responseData, format)
         end
 
         local tool_calls = {}
-        for _, tc in ipairs(raw_calls) do
+        for tc_idx, tc in ipairs(raw_calls) do
             local arguments_str = koutil.tableGetValue(tc, "function", "arguments") or "{}"
             table.insert(tool_calls, {
                 tool_call_id = tc.id,
