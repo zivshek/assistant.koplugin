@@ -10,6 +10,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to package, for example v1.15'
+        required: true
+        type: string
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel.
 jobs:
@@ -20,18 +26,22 @@ jobs:
     # Grant permissions for the GITHUB_TOKEN to create a release.
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
     # Steps represent a sequence of tasks that will be executed as part of the job.
     steps:
       # Step 1: Check out your repository under $GITHUB_WORKSPACE, so your job can access it.
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       # Step 2: Update version in _meta.lua based on the Git tag.
       - name: Update version in _meta.lua
         run: |
           # Extract version from tag (e.g., v1.2.3 -> 1.2.3)
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${RELEASE_TAG#v}
           echo "Updating version to ${VERSION} in _meta.lua"
           # Use sed to replace only the version number, preserving the rest of the line (like the trailing comma).
           # This ensures the version is stored as a string, enclosed in double quotes.
@@ -43,7 +53,7 @@ jobs:
       - name: Archive project source with zip
         run: |
           PACKAGE_NAME="assistant.koplugin"
-          ARCHIVE_NAME="${PACKAGE_NAME}-${GITHUB_REF_NAME}.zip"
+          ARCHIVE_NAME="${PACKAGE_NAME}-${RELEASE_TAG}.zip"
           # Create the directory structure for zipping
           mkdir "$PACKAGE_NAME"
           # Copy project files into the directory using a tar pipe, excluding unwanted files.
@@ -57,13 +67,23 @@ jobs:
 
       # Step 4: List files in the created archive for debugging purposes.
       - name: List archive contents
-        run: unzip -l assistant.koplugin-${GITHUB_REF_NAME}.zip
+        run: unzip -l assistant.koplugin-${RELEASE_TAG}.zip
+
+      - name: Validate OTA archive
+        run: |
+          ARCHIVE_NAME="assistant.koplugin-${RELEASE_TAG}.zip"
+          unzip -l "$ARCHIVE_NAME" "assistant.koplugin/main.lua" "assistant.koplugin/_meta.lua"
+          if unzip -l "$ARCHIVE_NAME" | grep -E 'assistant\.koplugin/(configuration\.lua|test/|\.github/|README\.md)'; then
+            echo "Release archive contains source-only or user-owned files."
+            exit 1
+          fi
 
       # Step 5: Create a GitHub Release and upload the archive as a release asset.
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
-          # Mark this release as a pre-release. Set to 'false' to create a full release.
-          prerelease: true
+          # Keep this false so GitHub's /releases/latest endpoint powers OTA checks.
+          prerelease: false
+          tag_name: ${{ env.RELEASE_TAG }}
           # The files to upload as release assets.
-          files: assistant.koplugin-${{ github.ref_name }}.zip
+          files: assistant.koplugin-${{ env.RELEASE_TAG }}.zip

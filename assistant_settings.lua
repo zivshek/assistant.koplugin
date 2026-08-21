@@ -778,14 +778,14 @@ SettingsDialog.genMenuSettings = function(assistant)
                 local ota_github_base = koutil.tableGetValue(assistant.CONFIGURATION, "features", "ota_github_base")
                     or "https://github.com"
                 local ota_github_repo = koutil.tableGetValue(assistant.CONFIGURATION, "features", "ota_github_repo")
-                    or "omer-faruq/assistant.koplugin"
+                    or "zivshek/assistant.koplugin"
                 local version_input
                 version_input = InputDialog:new{
                     title = T("%1 - %2 %3", _("OTA Update"), meta.fullname, meta.version),
-                    input = "main",
-                    input_hint = _("branch or tag name"),
+                    input = "latest",
+                    input_hint = _("latest, branch, or tag name"),
                     description = ASUtils.bold_format(
-                        T(_("Enter a branch or tag name to update the plugin from the source repository.\n\n<b>Github URL:</b>  %1\n<b>Source Repo:</b>  %2\n\nDefault: \"main\" (latest development branch)\nExamples: \"main\", \"v1.12\", \"v1.11\"\n\n<b>The configuration.lua will be preserved.</b>"),
+                        T(_("Enter \"latest\", a branch, or a tag name to update the plugin.\n\n<b>Github URL:</b>  %1\n<b>Source Repo:</b>  %2\n\nDefault: \"latest\" (latest GitHub release asset)\nExamples: \"latest\", \"main\", \"v1.12\", \"v1.11\"\n\n<b>The configuration.lua will be preserved.</b>"),
                           ota_github_base, ota_github_repo)
                     ),
                     buttons = {
@@ -803,7 +803,7 @@ SettingsDialog.genMenuSettings = function(assistant)
                                 callback = function()
 ASUtils.runWhenOnlineFast(function()
                                         local version = version_input:getInputText()
-                                        if version == "" then version = "main" end
+                                        if version == "" then version = "latest" end
                                         UIManager:close(version_input)
                                         touchmenu_instance:closeMenu()
                                         Updater.otaUpgrade(assistant, version)

@@ -141,6 +141,43 @@ local tests = {
     test("join: nil first arg returns empty string", function()
         assert.equal(updater.join(nil), "")
     end),
+
+    -- =========================================================================
+    -- OTA URL helpers
+    -- =========================================================================
+
+    test("buildUpdateCheckUrl: uses configured API base and repo", function()
+        local result = updater.buildUpdateCheckUrl({
+            github_api_base = "https://api.github.example",
+            repo = "owner/repo",
+        })
+        assert.equal(result, "https://api.github.example/repos/owner/repo/releases/latest")
+    end),
+
+    test("buildReleaseAssetUrl: formats tag into asset pattern", function()
+        local result = updater.buildReleaseAssetUrl({
+            github_base = "https://github.com",
+            repo = "zivshek/assistant.koplugin",
+            release_asset_pattern = "assistant.koplugin-%s.zip",
+        }, "v1.15")
+        assert.equal(result, "https://github.com/zivshek/assistant.koplugin/releases/download/v1.15/assistant.koplugin-v1.15.zip")
+    end),
+
+    test("buildSourceArchiveUrl: builds branch archive URL", function()
+        local result = updater.buildSourceArchiveUrl({
+            github_base = "https://github.com",
+            repo = "zivshek/assistant.koplugin",
+        }, "main")
+        assert.equal(result, "https://github.com/zivshek/assistant.koplugin/archive/refs/heads/main.zip")
+    end),
+
+    test("buildSourceArchiveUrl: builds tag archive URL", function()
+        local result = updater.buildSourceArchiveUrl({
+            github_base = "https://github.com",
+            repo = "zivshek/assistant.koplugin",
+        }, "v1.15")
+        assert.equal(result, "https://github.com/zivshek/assistant.koplugin/archive/refs/tags/v1.15.zip")
+    end),
 }
 
 return helper.runTests("assistant_updater.lua", tests)

@@ -26,6 +26,11 @@ end
 local CONFIGURATION = nil
 local meta = nil
 
+local DEFAULT_GITHUB_BASE = "https://github.com"
+local DEFAULT_GITHUB_API_BASE = "https://api.github.com"
+local DEFAULT_GITHUB_REPO = "zivshek/assistant.koplugin"
+local DEFAULT_RELEASE_ASSET_PATTERN = "assistant.koplugin-%s.zip"
+
 -- Returns true if the path should be excluded from OTA extraction.
 -- Exposed at module level for testing; also used inside otaUpgrade.
 function is_excluded(path)
@@ -128,13 +133,121 @@ local function isVersionNewer(v1_str, v2_str)
     return false -- Versions are identical
 end
 
+local function getFeature(key, default)
+  local value = koutil.tableGetValue(CONFIGURATION, "features", key)
+  if value == nil then
+    return default
+  end
+  return value
+end
+
+local function getGithubSettings()
+  return {
+    github_base = getFeature("ota_github_base", DEFAULT_GITHUB_BASE),
+    github_api_base = getFeature("ota_github_api_base", DEFAULT_GITHUB_API_BASE),
+    repo = getFeature("ota_github_repo", DEFAULT_GITHUB_REPO),
+    release_asset_pattern = getFeature("ota_release_asset_pattern", DEFAULT_RELEASE_ASSET_PATTERN),
+  }
+end
+
+local function buildUpdateCheckUrl(settings)
+  return string.format("%s/repos/%s/releases/latest", settings.github_api_base, settings.repo)
+end
+
+local function buildReleaseAssetUrl(settings, tag)
+  local pattern = settings.release_asset_pattern or DEFAULT_RELEASE_ASSET_PATTERN
+  local asset_name
+  if pattern:find("%%s", 1, true) then
+    asset_name = string.format(pattern, tag)
+  else
+    asset_name = pattern
+  end
+  return string.format("%s/%s/releases/download/%s/%s", settings.github_base, settings.repo, tag, asset_name)
+end
+
+local function buildSourceArchiveUrl(settings, version)
+  local repo_ref = version:sub(1, 1) == "v" and "tags" or "heads"
+  return string.format("%s/%s/archive/refs/%s/%s.zip", settings.github_base, settings.repo, repo_ref, version)
+end
+
+local function findReleaseAssetUrl(release_data, settings, tag)
+  if release_data and release_data.assets then
+    local expected_url = buildReleaseAssetUrl(settings, tag)
+    local expected_name = expected_url:match("/([^/]+)$")
+    for _, asset in ipairs(release_data.assets) do
+      if asset.name == expected_name and asset.browser_download_url then
+        return asset.browser_download_url
+      end
+    end
+  end
+  return buildReleaseAssetUrl(settings, tag)
+end
+
+local function fetchReleaseByTag(settings, tag)
+  local release_url = string.format("%s/repos/%s/releases/tags/%s", settings.github_api_base, settings.repo, tag)
+  return ASUtils.fetchJSON(
+    release_url,
+    { ["Accept"] = "application/vnd.github.v3+json" },
+    _("Checking release asset...")
+  )
+end
+
+local function resolveOtaDownload(version)
+  local settings = getGithubSettings()
+  local requested_version = version or "latest"
+  if requested_version == "" then requested_version = "latest" end
+
+  if requested_version == "latest" then
+    local release_data, err = ASUtils.fetchJSON(
+      buildUpdateCheckUrl(settings),
+      { ["Accept"] = "application/vnd.github.v3+json" },
+      _("Checking latest release...")
+    )
+    if not release_data or not release_data.tag_name then
+      return nil, T(_("Could not resolve latest release: %1"), tostring(err or _("missing tag_name")))
+    end
+    local tag = release_data.tag_name
+    return {
+      version = tag,
+      repo = settings.repo,
+      github_base = settings.github_base,
+      urls = {
+        findReleaseAssetUrl(release_data, settings, tag),
+        buildSourceArchiveUrl(settings, tag),
+      },
+    }
+  end
+
+  if requested_version:sub(1, 1) == "v" then
+    local release_data = fetchReleaseByTag(settings, requested_version)
+    return {
+      version = requested_version,
+      repo = settings.repo,
+      github_base = settings.github_base,
+      urls = {
+        findReleaseAssetUrl(release_data, settings, requested_version),
+        buildSourceArchiveUrl(settings, requested_version),
+      },
+    }
+  end
+
+  return {
+    version = requested_version,
+    repo = settings.repo,
+    github_base = settings.github_base,
+    urls = {
+      buildSourceArchiveUrl(settings, requested_version),
+    },
+  }
+end
+
 local function checkForUpdates()
   if koutil.tableGetValue(CONFIGURATION, "features", "updater_disabled") then
     return
   end
 
   local update_url = koutil.tableGetValue(CONFIGURATION, "features", "update_check_url")
-    or "https://api.github.com/repos/omer-faruq/assistant.koplugin/releases/latest"
+    or buildUpdateCheckUrl(getGithubSettings())
 
   local parsed_data, err = ASUtils.fetchJSON(update_url,
       { ["Accept"] = "application/vnd.github.v3+json" },
@@ -161,13 +274,12 @@ end
 local function otaUpgrade(version)
   local PLUGIN_NAME = "assistant.koplugin"
 
-  local GITHUB_BASE = koutil.tableGetValue(CONFIGURATION, "features", "ota_github_base")
-    or "https://github.com"
-  local GITHUB_REPO = koutil.tableGetValue(CONFIGURATION, "features", "ota_github_repo")
-    or "omer-faruq/assistant.koplugin"
-
-  local REPO_REF = version:sub(1, 1) == "v" and "tags" or "heads"
-  local RELEASE_URL = string.format("%s/%s/archive/refs/%s/%s.zip", GITHUB_BASE, GITHUB_REPO, REPO_REF, version)
+  local download_info, resolve_err = resolveOtaDownload(version)
+  if not download_info then
+    Notification:notify(T(_("OTA update failed: %1"), tostring(resolve_err)), Notification.SOURCE_ALWAYS_SHOW)
+    return
+  end
+  version = download_info.version
 
   local DataStorage = require("datastorage")
   local lfs = require("libs/libkoreader-lfs")
@@ -190,7 +302,7 @@ local function otaUpgrade(version)
     face = Font:getFace("xx_smallinfofont"),
       text = ASUtils.bold_format(
       T(_("<b>Downloading ...</b>\n<b>Github: </b>%1\n<b>Repo: </b>%2\n<b>Branch/Tag: </b>%3"),
-        GITHUB_BASE, GITHUB_REPO, version)
+        download_info.github_base, download_info.repo, version)
     ),
   }
   UIManager:show(download_msg)
@@ -198,28 +310,37 @@ local function otaUpgrade(version)
   local completed, dl_result, dl_err = Trapper:dismissableRunInSubprocess(function()
     local socket = require("socket")
     local http = require("socket.http")
+    local https = require("ssl.https")
     local ltn12 = require("ltn12")
 
-    local file_handle = io.open(DL_TAR, "wb")
-    if not file_handle then
-      return false, "Could not create temp file"
-    end
-
-    local sink = ltn12.sink.file(file_handle)
-    local status_code = socket.skip(1, http.request{
-      url = RELEASE_URL,
-      method = "GET",
-      sink = sink,
-    })
-
-    if status_code ~= 200 then
-      if status_code == 404 then
-        return false, T(_("Branch/Tag \"%1\" was not found."), version)
+    local last_err = nil
+    for _, url in ipairs(download_info.urls) do
+      local file_handle = io.open(DL_TAR, "wb")
+      if not file_handle then
+        return false, "Could not create temp file"
       end
-      return false, "Download failed: HTTP " .. tostring(status_code)
+
+      local sink = ltn12.sink.file(file_handle)
+      local requester = url:sub(1, 8) == "https://" and https or http
+      local status_code = socket.skip(1, requester.request{
+        url = url,
+        method = "GET",
+        sink = sink,
+      })
+
+      if status_code == 200 then
+        return true, nil
+      end
+
+      os.remove(DL_TAR)
+      if status_code == 404 then
+        last_err = T(_("Branch/Tag \"%1\" was not found."), version)
+      else
+        last_err = T(_("Download failed: HTTP %1"), tostring(status_code))
+      end
     end
 
-    return true, nil
+    return false, last_err or _("Download failed")
   end, download_msg)
 
   UIManager:close(download_msg)
@@ -332,6 +453,9 @@ return {
   isVersionNewer = isVersionNewer,
   is_excluded = is_excluded,
   join = join,
+  buildUpdateCheckUrl = buildUpdateCheckUrl,
+  buildReleaseAssetUrl = buildReleaseAssetUrl,
+  buildSourceArchiveUrl = buildSourceArchiveUrl,
   checkForUpdates = function(assistant)
     CONFIGURATION = assistant.CONFIGURATION
     meta = assistant.meta
