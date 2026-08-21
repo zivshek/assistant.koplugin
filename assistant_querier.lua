@@ -272,22 +272,6 @@ local function updateStreamText(streamDialog, delta, auto_scroll)
     end
 end
 
-local function cleanStreamError(err)
-    return tostring(err or ""):gsub("^[\n%s]*", "")
-end
-
-local function addInterruptedStreamNotice(content, err)
-    if type(content) ~= "string" or #koutil.trim(content) == 0 then
-        return nil, cleanStreamError(err)
-    end
-    local notice = _("\n\n---\n\n**Response interrupted before completion.**")
-    local clean_err = cleanStreamError(err)
-    if #clean_err > 0 then
-        notice = notice .. _("\n\nError: ") .. clean_err
-    end
-    return content .. notice, nil
-end
-
 --- Query the AI with the provided message history.
 --- Handles both stream and non-stream modes, including multi-turn tool-call loops.
 ---
@@ -726,11 +710,7 @@ function Querier:showStreamDialog(res)
         return nil, _("Request cancelled by user.")
     end
     if err then
-        local partial_content, partial_err = addInterruptedStreamNotice(content, err)
-        if partial_content then
-            return true, partial_content
-        end
-        return nil, partial_err
+        return nil, err:gsub("^[\n%s]*", "") -- clean leading spaces and newlines
     end
 
     return true, content
@@ -756,7 +736,6 @@ function Querier:processStream(bgQuery, trunk_callback)
     local tool_calls   -- set to the accumulated array when LLM issues tool calls
     local tool_call_acc = { current = {}, tools = {} }  -- persistent accumulator: { current={...}, tools={...} }
     local non200_start -- byte offset in result_buffer when non-200 line was received
-    local stream_content_seen = false
     local check_interval_sec = 0.125 -- loop check interval: 125ms  
     local chunksize = 1024 * 16 -- buffer size for reading data
     local completed = false   -- Flag to indicate if the reading is completed
@@ -827,12 +806,7 @@ function Querier:processStream(bgQuery, trunk_callback)
                         -- Safely parse the JSON
                         local ok, event = pcall(rapidjson.decode, json_str)
                         if ok and event then
-                            local result_len_before = #result_buffer
-                            local reasoning_len_before = #reasoning_content_buffer
                             local signal = self:processChunk(event, trunk_callback, result_buffer, reasoning_content_buffer, tool_call_acc)
-                            if #result_buffer > result_len_before or #reasoning_content_buffer > reasoning_len_before then
-                                stream_content_seen = true
-                            end
                             if signal == "TOOLCALLS" then
                                 -- Normalize tool calls: merge arguments_parts into arguments
                                 tool_calls = {}
@@ -979,10 +953,6 @@ function Querier:processStream(bgQuery, trunk_callback)
         local err_header = T("%1: (%2)", status ~= "" and status or tostring(code ~= "" and code or "?"), endpoint)
         if err_msg and #err_msg > 0 then
             err_header = T("%1\n\n<b>%2:</b>\n%3", err_header, _("Error Message"), err_msg)
-        end
-        local partial_answer = koutil.trim(ret:sub(1, non200_start))
-        if stream_content_seen and #partial_answer > 0 then
-            return partial_answer, err_header
         end
         return nil, err_header
     end
