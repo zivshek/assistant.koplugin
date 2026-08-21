@@ -6,6 +6,7 @@ local ToolExecutor = require("assistant_tool_executor")
 local ASUtils = require("assistant_utils")
 local UIManager = require("ui/uimanager")
 local _ = require("assistant_gettext")
+local T = require("ffi/util").template
 local InfoMessage = require("ui/widget/infomessage")
 
 local OpenAIHandler = BaseHandler:new({
@@ -149,6 +150,21 @@ function OpenAIHandler:query(message_history, query_option)
                 local err_msg = koutil.tableGetValue(rd, "error", "message")
                 if err_msg then return nil, err_msg end
             end
+        end
+        if code == 401 then
+            local provider = self.provider_name or self.name or _("current provider")
+            local api_key_info = self.api_key and self.api_key ~= ""
+                and T(_("present (%1 chars)"), #self.api_key)
+                or _("missing")
+            local source = self.source == "ui" and _("Settings UI") or _("configuration.lua")
+            return nil, T(
+                _("Authentication failed for %1.\n\nModel: %2\nBase URL: %3\nProvider source: %4\nAPI key: %5\n\nCheck the API key saved for this provider. If this is DeepSeek, use base URL https://api.deepseek.com and a DeepSeek API key."),
+                provider,
+                tostring(self.model or "?"),
+                tostring(self.base_url or "?"),
+                source,
+                api_key_info
+            )
         end
         return nil, "Error: " .. tostring(self.model) .. "\n" .. self:getApiUrl() .. "\n- " .. tostring(code or "unknown") .. " - " .. tostring(response)
     end

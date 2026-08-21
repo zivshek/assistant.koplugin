@@ -44,7 +44,7 @@ Registry.DEFAULT_BASE_URLS = {
 -- Each preset carries provider-specific additional_parameters that default to
 -- reducing/disabling the reasoning/thinking chain (see configuration.sample.lua).
 local PRESET_PROVIDERS = {
-    { name = "DeepSeek",   handler = "openai",   base_url = "https://api.deepseek.com/v1",
+    { name = "DeepSeek",   handler = "openai",   base_url = "https://api.deepseek.com",
       additional_parameters = {
           temperature = 0.7,
           max_tokens = 4096,

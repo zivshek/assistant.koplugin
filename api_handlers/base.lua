@@ -53,9 +53,32 @@ end
 -- Sync Options from the querier (provider_setting)
 --  and the settings for models
 function BaseHandler:SyncOptions(querier)
+    for _, key in ipairs({
+        "provider_name",
+        "handler_name",
+        "base_url",
+        "models_url",
+        "auth_url",
+        "model",
+        "api_key",
+        "additional_parameters",
+        "display_name",
+        "source",
+        "immutable",
+    }) do
+        self[key] = nil
+    end
+
     self.provider_name = querier.provider_name
     self.handler_name = querier.handler_name
     koutil.tableMerge(self, querier.provider_setting)
+
+    if type(self.api_key) == "string" then
+        self.api_key = self.api_key:gsub("^%s*(.-)%s*$", "%1")
+    end
+    if type(self.base_url) == "string" then
+        self.base_url = self.base_url:gsub("^%s*(.-)%s*$", "%1")
+    end
 
     -- Normalize base_url: strip known API path suffixes for backward compatibility
     self:normalizeBaseUrl()

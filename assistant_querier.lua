@@ -113,11 +113,6 @@ end
 
 --- Load provider model for the Querier
 function Querier:load_model(provider_name)
-    -- If the provider is already loaded, do nothing.
-    if provider_name == self.provider_name and self:is_inited() then
-        return true
-    end
-
     local CONFIGURATION = self.assistant.CONFIGURATION
 
     local provider_setting = koutil.tableGetValue(CONFIGURATION, "provider_settings", provider_name)
@@ -914,6 +909,25 @@ function Querier:processStream(bgQuery, trunk_callback)
                     or (type(e) == "string" and e)
                     or j.message
             end
+        end
+
+        if tostring(code) == "401" then
+            local provider = self:getProviderLabel()
+            local base_url = koutil.tableGetValue(self.provider_setting, "base_url") or "?"
+            local api_key = koutil.tableGetValue(self.provider_setting, "api_key")
+            local api_key_info = api_key and api_key ~= ""
+                and T(_("present (%1 chars)"), #api_key)
+                or _("missing")
+            local source = koutil.tableGetValue(self.provider_setting, "source") == "ui"
+                and _("Settings UI")
+                or _("configuration.lua")
+            err_msg = T(
+                _("Authentication failed for %1.\n\nBase URL: %2\nProvider source: %3\nAPI key: %4\n\nCheck the API key saved for this provider. If this is DeepSeek, use base URL https://api.deepseek.com and a DeepSeek API key."),
+                provider,
+                tostring(base_url),
+                source,
+                api_key_info
+            )
         end
 
         local err_header = T("%1: (%2)", status ~= "" and status or tostring(code ~= "" and code or "?"), endpoint)
