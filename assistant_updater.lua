@@ -170,6 +170,33 @@ local function buildSourceArchiveUrl(settings, version)
   return string.format("%s/%s/archive/refs/%s/%s.zip", settings.github_base, settings.repo, repo_ref, version)
 end
 
+local function versionFromRef(version)
+  if type(version) ~= "string" then return nil end
+  return version:match("^v([%w%.%-%+]+)$")
+end
+
+local function rewriteMetaVersion(plugin_dir, version)
+  local normalized_version = versionFromRef(version)
+  if not normalized_version then return true end
+
+  local meta_path = join(plugin_dir, "_meta.lua")
+  local file = io.open(meta_path, "rb")
+  if not file then return false, "Could not open _meta.lua" end
+  local content = file:read("*a")
+  file:close()
+
+  local updated, count = content:gsub('(version%s*=%s*)["\'][^"\']+["\']', '%1"' .. normalized_version .. '"', 1)
+  if count ~= 1 then
+    return false, "Could not update version in _meta.lua"
+  end
+
+  file = io.open(meta_path, "wb")
+  if not file then return false, "Could not write _meta.lua" end
+  file:write(updated)
+  file:close()
+  return true
+end
+
 local function findReleaseAssetUrl(release_data, settings, tag)
   if release_data and release_data.assets then
     local expected_url = buildReleaseAssetUrl(settings, tag)
@@ -475,6 +502,16 @@ local function otaUpgrade(version)
     -- Install the freshly extracted plugin into its target location
     os.rename(found_extracted_dir, TARGET_PLUGIN_PATH)
 
+    local meta_ok, meta_err = rewriteMetaVersion(TARGET_PLUGIN_PATH, version)
+    if not meta_ok then
+      if util.pathExists(BACKUP_PLUGIN_PATH) then
+        FFIUtil.purgeDir(TARGET_PLUGIN_PATH)
+        os.rename(BACKUP_PLUGIN_PATH, TARGET_PLUGIN_PATH)
+      end
+      FFIUtil.purgeDir(UPDATE_TMPDIR)
+      return false, meta_err
+    end
+
     -- Restore user-owned files from the backup
     if util.pathExists(BACKUP_PLUGIN_PATH) then
       local restore_targets = {"configuration.lua"}
@@ -512,6 +549,7 @@ return {
   buildUpdateCheckUrl = buildUpdateCheckUrl,
   buildReleaseAssetUrl = buildReleaseAssetUrl,
   buildSourceArchiveUrl = buildSourceArchiveUrl,
+  versionFromRef = versionFromRef,
   checkForUpdates = function(assistant)
     CONFIGURATION = assistant.CONFIGURATION
     meta = assistant.meta

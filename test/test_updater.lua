@@ -178,6 +178,14 @@ local tests = {
         }, "v1.15")
         assert.equal(result, "https://github.com/zivshek/assistant.koplugin/archive/refs/tags/v1.15.zip")
     end),
+
+    test("versionFromRef: extracts version only from release tags", function()
+        assert.equal(updater.versionFromRef("v1.20"), "1.20")
+        assert.equal(updater.versionFromRef("v1.20-beta.1"), "1.20-beta.1")
+        assert.equal(updater.versionFromRef("v1.20+build.5"), "1.20+build.5")
+        assert.equal(updater.versionFromRef("main"), nil)
+        assert.equal(updater.versionFromRef("1.20"), nil)
+    end),
 }
 
 return helper.runTests("assistant_updater.lua", tests)
