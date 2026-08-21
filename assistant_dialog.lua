@@ -57,7 +57,12 @@ function AssistantDialog:_formatUserPrompt(user_prompt, highlightedText, user_in
     ASUtils.getContextCharLimit(self.CONFIGURATION, "highlight_context_char_limit", 16000),
     "head"
   )
-  local language = self.assistant.settings:readSetting("response_language") or self.assistant.ui_language
+  local language = ASUtils.resolveLanguageForPrompt(
+    self.assistant,
+    "response_language",
+    "response_language_use_book",
+    text_to_use
+  )
   
   -- Calculate progress if placeholder is present  
   local formatted_progress = nil
@@ -331,7 +336,6 @@ function AssistantDialog:show(highlightedText)
       not self.assistant.ui.doc_settings and Notebook.isEnabled(self.assistant)
   local system_prompt = koutil.tableGetValue(self.CONFIGURATION, "features", "system_prompt") or koutil.tableGetValue(Prompts, "assistant_prompts", "default", "system_prompt")
   if self.assistant.settings:readSetting("auto_prompt_suggest", false) then
-    local language = self.assistant.settings:readSetting("response_language") or self.assistant.ui_language
     system_prompt = system_prompt .. Prompts.assistant_prompts.suggestions_prompt
   end
 

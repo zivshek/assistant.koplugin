@@ -51,6 +51,51 @@ local tests = {
             assert.matches(result, "BOOK HIGHLIGHTS, NOTES AND NOTEBOOK CONTENT OMITTED")
         end,
     },
+    {
+        name = "guessLanguageFromText detects Chinese text",
+        fn = function()
+            assert.equal(ASUtils.guessLanguageFromText("这是中文"), "Chinese")
+        end,
+    },
+    {
+        name = "getBookLanguageName reads document metadata",
+        fn = function()
+            local ui = {
+                document = {
+                    getProps = function()
+                        return { language = "zh-CN" }
+                    end,
+                },
+            }
+            assert.equal(ASUtils.getBookLanguageName(ui), "Chinese")
+        end,
+    },
+    {
+        name = "resolveLanguageForPrompt prefers book language when enabled",
+        fn = function()
+            local settings_values = {
+                dict_language_use_book = true,
+                dict_language = "English",
+            }
+            local assistant = {
+                ui_language = "English",
+                ui = {},
+                settings = {
+                    readSetting = function(_, key, default)
+                        local value = settings_values[key]
+                        if value == nil then
+                            return default
+                        end
+                        return value
+                    end,
+                },
+            }
+            assert.equal(
+                ASUtils.resolveLanguageForPrompt(assistant, "dict_language", "dict_language_use_book", "字"),
+                "Chinese"
+            )
+        end,
+    },
 }
 
 return helper.runTests("context_budget", tests)

@@ -82,6 +82,189 @@ function M.omitLargeContextBlocks(content)
     return content
 end
 
+local LANGUAGE_CODE_NAMES = {
+    en = "English",
+    eng = "English",
+    zh = "Chinese",
+    chi = "Chinese",
+    zho = "Chinese",
+    cmn = "Chinese",
+    ja = "Japanese",
+    jpn = "Japanese",
+    ko = "Korean",
+    kor = "Korean",
+    es = "Spanish",
+    spa = "Spanish",
+    fr = "French",
+    fre = "French",
+    fra = "French",
+    de = "German",
+    ger = "German",
+    deu = "German",
+    tr = "Turkish",
+    tur = "Turkish",
+    ar = "Arabic",
+    ara = "Arabic",
+    he = "Hebrew",
+    heb = "Hebrew",
+    ru = "Russian",
+    rus = "Russian",
+}
+
+local function trimString(value)
+    if type(value) ~= "string" then
+        return nil
+    end
+    value = value:gsub("^%s*(.-)%s*$", "%1")
+    return value ~= "" and value or nil
+end
+
+local function languageNameFromValue(value)
+    if type(value) == "table" then
+        for _, key in ipairs({"language", "languages", "lang", "locale", "dc_language", "dc:language"}) do
+            local name = languageNameFromValue(value[key])
+            if name then
+                return name
+            end
+        end
+        for _, item in ipairs(value) do
+            local name = languageNameFromValue(item)
+            if name then
+                return name
+            end
+        end
+        return nil
+    end
+
+    local raw = trimString(value)
+    if not raw then
+        return nil
+    end
+
+    raw = raw:gsub("_", "-")
+    raw = raw:match("^[^,;/]+") or raw
+    raw = trimString(raw)
+    if not raw then
+        return nil
+    end
+
+    local code = raw:lower()
+    local base_code = code:match("^([a-z][a-z][a-z]?)%-") or code
+
+    local ok, Language = pcall(require, "ui/language")
+    if ok and Language and Language.getLanguageName then
+        local name = Language:getLanguageName(code) or Language:getLanguageName(base_code)
+        if name then
+            return name
+        end
+    end
+
+    return LANGUAGE_CODE_NAMES[base_code] or LANGUAGE_CODE_NAMES[code] or raw
+end
+
+function M.guessLanguageFromText(text)
+    if type(text) ~= "string" or text == "" then
+        return nil
+    end
+
+    if text:find("\227[\129-\131][\128-\191]") then
+        return "Japanese"
+    end
+    if text:find("[\234-\237][\128-\191][\128-\191]") then
+        return "Korean"
+    end
+    if text:find("[\228-\233][\128-\191][\128-\191]") then
+        return "Chinese"
+    end
+    if text:find("[\216-\219][\128-\191]") then
+        return "Arabic"
+    end
+    if text:find("[\214-\215][\128-\191]") then
+        return "Hebrew"
+    end
+    if text:find("[\208-\211][\128-\191]") then
+        return "Russian"
+    end
+
+    return nil
+end
+
+function M.getBookLanguageName(ui, text_hint)
+    if ui then
+        local candidates = {}
+
+        if ui.document then
+            local ok, props = pcall(function()
+                return ui.document:getProps()
+            end)
+            if ok and props then
+                table.insert(candidates, props.language)
+                table.insert(candidates, props.languages)
+                table.insert(candidates, props.lang)
+                table.insert(candidates, props.locale)
+                table.insert(candidates, props.dc_language)
+                table.insert(candidates, props["dc:language"])
+            end
+
+            if ui.document.info then
+                table.insert(candidates, ui.document.info.language)
+                table.insert(candidates, ui.document.info.languages)
+                table.insert(candidates, ui.document.info.lang)
+            end
+        end
+
+        if ui.doc_settings and ui.doc_settings.readSetting then
+            for _, key in ipairs({"language", "doc_language", "book_language", "metadata_language"}) do
+                local ok, value = pcall(function()
+                    return ui.doc_settings:readSetting(key)
+                end)
+                if ok then
+                    table.insert(candidates, value)
+                end
+            end
+        end
+
+        for _, value in ipairs(candidates) do
+            local name = languageNameFromValue(value)
+            if name then
+                return name
+            end
+        end
+    end
+
+    return M.guessLanguageFromText(text_hint)
+end
+
+function M.resolveLanguageForPrompt(assistant, setting_key, use_book_setting_key, text_hint)
+    if assistant and assistant.settings then
+        if assistant.settings:readSetting(use_book_setting_key, false) then
+            local book_language = M.getBookLanguageName(assistant.ui, text_hint)
+            if book_language then
+                return book_language
+            end
+        end
+
+        local explicit_language = assistant.settings:readSetting(setting_key)
+        if explicit_language and explicit_language ~= "" then
+            return explicit_language
+        end
+    end
+
+    return (assistant and assistant.ui_language) or "English"
+end
+
+function M.languageSettingDisplay(assistant, setting_key, use_book_setting_key)
+    if assistant and assistant.settings and assistant.settings:readSetting(use_book_setting_key, false) then
+        local book_language = M.getBookLanguageName(assistant.ui)
+        if book_language then
+            return T(_("Book language: %1"), book_language)
+        end
+        return _("Book language")
+    end
+
+    return M.resolveLanguageForPrompt(assistant, setting_key, use_book_setting_key)
+end
+
 function M.getGeneralNotebookFilePath(assistant)
   if Notebook.isEnabled(assistant) then
     local notebook, err, warning = Notebook.getActive(assistant)

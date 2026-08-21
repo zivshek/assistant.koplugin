@@ -204,7 +204,12 @@ local term_xray_prompts = require("assistant_prompts").builtin_prompts.term_xray
     local prev_context, next_context = "", ""
     local context_text = ""
     local context_sentence_count = 0
-    local dict_language = assistant.settings:readSetting("dict_language") or assistant.ui_language
+    local dict_language = ASUtils.resolveLanguageForPrompt(
+        assistant,
+        "dict_language",
+        "dict_language_use_book",
+        highlightedText
+    )
 
     if prompt_type == "term_xray" then
         -- Show loading dialog immediately to avoid app appearing frozen during LexRank processing

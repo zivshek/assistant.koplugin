@@ -77,6 +77,9 @@ end
 local function LanguageSetting(assistant, close_callback)
     local langsetting
     local chkbtn_is_rtl
+    local chkbtn_response_book_language
+    local chkbtn_dict_book_language
+    local book_language = ASUtils.getBookLanguageName(assistant.ui)
     langsetting = CopyMultiInputDialog:new{
         description_margin = Size.margin.tiny,
         description_padding = Size.padding.tiny,
@@ -85,12 +88,12 @@ local function LanguageSetting(assistant, close_callback)
             {
                 description = _("AI Response Language"),
                 text = assistant.settings:readSetting("response_language") or "",
-                hint = T(_("Leave blank to use: %1"), assistant.ui_language),
+                hint = T(_("Leave blank to use: %1"), ASUtils.languageSettingDisplay(assistant, "response_language", "response_language_use_book")),
             },
             {
                 description = _("Dictionary Language"),
                 text = assistant.settings:readSetting("dict_language") or "",
-                hint = T(_("Leave blank to use: %1"), assistant.ui_language),
+                hint = T(_("Leave blank to use: %1"), ASUtils.languageSettingDisplay(assistant, "dict_language", "dict_language_use_book")),
             },
         },
         buttons = {
@@ -112,6 +115,14 @@ local function LanguageSetting(assistant, close_callback)
                             chkbtn_is_rtl.checked = assistant.ui_language_is_rtl
                             chkbtn_is_rtl:init()
                         end
+                        if chkbtn_response_book_language then
+                            chkbtn_response_book_language.checked = false
+                            chkbtn_response_book_language:init()
+                        end
+                        if chkbtn_dict_book_language then
+                            chkbtn_dict_book_language.checked = false
+                            chkbtn_dict_book_language:init()
+                        end
 
                         UIManager:setDirty(langsetting, function()
                             return "ui", langsetting.dialog_frame.dimen
@@ -128,6 +139,17 @@ local function LanguageSetting(assistant, close_callback)
                                 assistant.settings:delSetting(key)
                             else
                                 assistant.settings:saveSetting(key, fields[i])
+                            end
+                        end
+
+                        for _, option in ipairs({
+                            { button = chkbtn_response_book_language, key = "response_language_use_book" },
+                            { button = chkbtn_dict_book_language, key = "dict_language_use_book" },
+                        }) do
+                            if option.button and option.button.checked then
+                                assistant.settings:saveSetting(option.key, true)
+                            else
+                                assistant.settings:delSetting(option.key)
                             end
                         end
 
@@ -148,6 +170,38 @@ local function LanguageSetting(assistant, close_callback)
         },
 
     }
+
+    chkbtn_response_book_language = CheckButton:new{
+        text = _("Use book language for AI responses"),
+        face = Font:getFace("xx_smallinfofont"),
+        checked = assistant.settings:readSetting("response_language_use_book", false),
+        parent = langsetting,
+    }
+
+    chkbtn_dict_book_language = CheckButton:new{
+        text = _("Use book language for dictionary"),
+        face = Font:getFace("xx_smallinfofont"),
+        checked = assistant.settings:readSetting("dict_language_use_book", false),
+        parent = langsetting,
+    }
+
+    local book_language_hint = book_language
+        and T(_("Detected book language: %1"), book_language)
+        or _("Detected book language: unavailable")
+    langsetting:addWidget(FrameContainer:new{
+        padding = Size.padding.default,
+        margin = Size.margin.small,
+        bordersize = 0,
+        VerticalGroup:new{
+            chkbtn_response_book_language,
+            chkbtn_dict_book_language,
+            TextBoxWidget:new{
+                text = book_language_hint,
+                face = Font:getFace("x_smallinfofont"),
+                width = math.floor(langsetting.width * 0.95),
+            },
+        },
+    })
 
     chkbtn_is_rtl = CheckButton:new{
         text = _("RTL written Language"),
@@ -501,7 +555,11 @@ SettingsDialog.genMenuSettings = function(assistant)
         {
             text_func = function ()
                 return _("AI Language: ") .. 
-                    (assistant.settings:readSetting("response_language") or assistant.ui_language)
+                    ASUtils.languageSettingDisplay(
+                        assistant,
+                        "response_language",
+                        "response_language_use_book"
+                    )
             end,
             callback = function (touchmenu_instance)
                 LanguageSetting(assistant, function ()

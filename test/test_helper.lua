@@ -33,6 +33,19 @@ local stubs = {
     ["ui/input"]                = {},
     ["ui/geometry"]             = {},
     ["ui/font"]                 = { getFace = function() return {} end },
+    ["ui/language"]             = {
+        getLanguageName = function(_, code)
+            local names = {
+                en = "English",
+                zh = "Chinese",
+                ["zh-cn"] = "Chinese",
+                ja = "Japanese",
+                ko = "Korean",
+            }
+            return names[code]
+        end,
+        isLanguageRTL = function() return false end,
+    },
     ["ui/component"]            = {},
     ["ui/size"]                 = {},
     ["ui/widget/trapwidget"]    = {},

@@ -32,7 +32,11 @@ local function showFeatureDialog(assistant, feature_type, title, author, progres
     local formatted_progress_percent = string.format("%.2f", progress_percent * 100)
     local feature_title, loading_message, system_prompt, user_prompt_template, user_prompt_use_websearch, book_text, highlights_notes
 
-    local language = assistant.settings:readSetting("response_language") or assistant.ui_language
+    local language = ASUtils.resolveLanguageForPrompt(
+        assistant,
+        "response_language",
+        "response_language_use_book"
+    )
     local book_context_limit = ASUtils.getContextCharLimit(CONFIGURATION, "feature_context_char_limit", 24000)
     local book_context_page_limit = ASUtils.getContextCharLimit(CONFIGURATION, "feature_context_page_limit", 50)
     local notes_context_limit = ASUtils.getContextCharLimit(CONFIGURATION, "notes_context_char_limit", 16000)
