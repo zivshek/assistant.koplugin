@@ -8,6 +8,20 @@ A powerful plugin that lets you interact with AI language models (Claude, GPT-4,
 
 <small>Originally forked from a deleted fork of AskGPT by zeeyado, then modified using WindSurf. That fork is now public and includes many updates: https://github.com/zeeyado/koassistant.koplugin </small>
 
+## Notable Differences From Upstream
+
+This fork builds on the original `omer-faruq/assistant.koplugin` project with a stronger focus on book-aware workflows, provider flexibility, web search, and maintainable releases.
+
+- **Book-aware features**: Adds Recap, Book Information, Annotations Analysis, Summary Using Highlights & Notes, and a structured **X-Ray** view for spoiler-safe re-entry into a book.
+- **AI Dictionary and Term X-Ray**: Adds dictionary-popup buttons, an optional gesture override for KOReader's Translate action, and LexRank-based Term X-Ray context extraction for selected words or phrases.
+- **More provider options**: Adds UI-managed provider setup, model browsing, provider presets, display names, and support for more OpenAI-compatible services such as DeepSeek, OpenRouter, Groq, Mistral, Ollama, Gemma, GigaChat, and the OpenAI Responses API.
+- **Web search tool calling**: Adds tool-call based web search across supported handlers, with external search providers such as Tavily, SerpAPI, Exa, and SearXNG. Search usage is shown in the final answer when web search was used.
+- **Tavily quota protection**: Uses Tavily's usage API to check remote quota before searches, helping avoid accidentally spending beyond the free monthly credits.
+- **Lower token usage controls**: Adds configurable context limits, prompt truncation, large-context omission, and conversation trimming so simple questions do not send unnecessary book context.
+- **Language-aware answers**: Supports configured response languages and "answer in the book language" behavior for dictionary and book-level prompts.
+- **OTA-friendly releases**: Adds GitHub Actions release packaging, GitHub release update checks, redirect handling, SemVer comparison, and safeguards against reinstalling the same version.
+- **Diagnostics and hardening**: Improves provider/authentication error messages, search audit rendering, stream and non-stream tool-call handling, and adds a headless Lua test suite for core helpers.
+
 ## Features
 
 - **Multiple AI Providers**: Support for:
