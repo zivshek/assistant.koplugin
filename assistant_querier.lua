@@ -301,7 +301,18 @@ function Querier:query(message_history, title)
 
     local is_added_maximum_prompt = false
 
-    -- reuseable function for both strem mode / non-strem mode
+    local function disableWebSearchForFinalAnswer()
+        query_option.force_websearch = false
+        query_option.use_websearch = "none"
+    end
+
+    local function disableForcedWebSearchAfterUse()
+        if query_option.force_websearch then
+            disableWebSearchForFinalAnswer()
+        end
+    end
+
+    -- reusable function for both stream mode / non-stream mode
     local function executeSearch(tool_calls_array, tool_rounds)
         local err
         local search_results = {}
@@ -361,7 +372,7 @@ function Querier:query(message_history, title)
         -- ---------------------------------------------------------------
         -- STREAM PATH  — supports multi-turn tool-call loop
         --
-        -- handler:query() returns a background function; showStremDialog
+        -- handler:query() returns a background function; showStreamDialog
         -- drives processStream and returns:
         --   ok=true,  content=string,  nil          → plain text answer
         --   ok=true,  content=nil,     tool_calls=[] → LLM wants tool(s)
@@ -385,13 +396,13 @@ function Querier:query(message_history, title)
                 break
             end
 
-            local ok, content, tool_calls_array = self:showStremDialog(bg_fn)
+            local ok, content, tool_calls_array = self:showStreamDialog(bg_fn)
             if not ok then
                 -- cancelled or stream error
                 res = nil
                 err = content or _("Stream failed with no error message.")
                 if err ~= self.handler.CODE_CANCELLED then
-                    logger.warn("cancelled/strem error", content, tool_calls_array)
+                    logger.warn("cancelled/stream error", content, tool_calls_array)
                 end
                 break
             end
@@ -445,8 +456,12 @@ function Querier:query(message_history, title)
                 logger.warn("failed to appendToolResult", content, tool_calls_array, append_err)
                 break
             end
+            disableForcedWebSearchAfterUse()
+            if is_added_maximum_prompt or tool_rounds >= MAX_TOOL_ROUNDS then
+                disableWebSearchForFinalAnswer()
+            end
 
-            -- query_option stays unchanged; loop will call handler:query again with augmented history
+            -- Loop again with augmented history; explicit forced search is one-shot.
             res = nil
             err = nil
 
@@ -485,9 +500,7 @@ function Querier:query(message_history, title)
 
                 -- Build tool result and append to history
                 local search_ok, search_results
-                if tool_rounds < MAX_TOOL_ROUNDS then
-                    search_ok, search_results = executeSearch(res.tool_calls, tool_rounds)
-                end
+                search_ok, search_results = executeSearch(res.tool_calls, tool_rounds)
                 if not search_ok then
                     res = nil
                     err = search_results
@@ -510,6 +523,10 @@ function Querier:query(message_history, title)
                     err = append_err
                     logger.warn("failed to appendToolResult", res, append_err)
                     break
+                end
+                disableForcedWebSearchAfterUse()
+                if is_added_maximum_prompt or tool_rounds >= MAX_TOOL_ROUNDS then
+                    disableWebSearchForFinalAnswer()
                 end
 
                 -- Refresh the loading indicator for the follow-up request
@@ -543,7 +560,7 @@ function Querier:query(message_history, title)
     end
     return res
 end
-function Querier:showStremDialog(res)
+function Querier:showStreamDialog(res)
 
     self.user_interrupted = false -- reset the stream interrupted flag
     local streamDialog

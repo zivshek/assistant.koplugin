@@ -23,7 +23,7 @@ end
 function SearchToolBase:SearchKeywords(keywords, trap_widget)
     return true, ""
 end
-function SearchToolBase:AccoutInfo()
+function SearchToolBase:AccountInfo()
     return true, T("%1:\n%2", self.name, self.base_url)
 end
 
@@ -68,7 +68,7 @@ function serpapi:SearchKeywords(keywords, trap_widget)
     segments:put("\n")
     return true, segments:get()
 end
-function serpapi:AccoutInfo()
+function serpapi:AccountInfo()
     local acc_url  = self.base_url .. "/account"
     local key      = self.api_key
     local url      = T("%1?api_key=%2", acc_url, key)
@@ -86,12 +86,11 @@ function serpapi:AccoutInfo()
         json_default(parsed.plan_searches_left), "")
     return true, ret
 end
-
-local tarvily = SearchToolBase:new({ 
+local tavily = SearchToolBase:new({
     name = "Tavily", base_url = "https://api.tavily.com",
     is_external = true,
 })
-function tarvily:SearchKeywords(keywords, trap_widget)
+function tavily:SearchKeywords(keywords, trap_widget)
     local search_url = self.base_url .. "/search"
     local requestBodyTable = {
         api_key              = self.api_key,
@@ -134,7 +133,7 @@ function tarvily:SearchKeywords(keywords, trap_widget)
     return true, segments:get()
 end
 
-function tarvily:GetUsageInfo(trap_widget)
+function tavily:GetUsageInfo(trap_widget)
     local acc_url  = self.base_url .. "/usage"
     local reqHeaders = { ["Authorization"]="Bearer " .. self.api_key }
     local parsed, err = ASUtils.fetchJSON(acc_url, reqHeaders, trap_widget or "loading...", 30, 60)
@@ -147,7 +146,7 @@ function tarvily:GetUsageInfo(trap_widget)
     return true, parsed
 end
 
-function tarvily:GetQuotaStatus(trap_widget)
+function tavily:GetQuotaStatus(trap_widget)
     local ok, parsed = self:GetUsageInfo(trap_widget)
     if not ok then return false, parsed end
     local key = type(parsed.key) == "table" and parsed.key or {}
@@ -166,7 +165,7 @@ function tarvily:GetQuotaStatus(trap_widget)
     }
 end
 
-function tarvily:AccoutInfo()
+function tavily:AccountInfo()
     local ok, status = self:GetQuotaStatus("loading...")
     if not ok then
         return false, status
@@ -289,7 +288,7 @@ return {
     none = SearchToolBase:new{name = _("None")},
     builtin = SearchToolBase:new{name = _("Model Built-In")},
     serpapi   = serpapi,
-    tavilyapi = tarvily,
+    tavilyapi = tavily,
     searxngapi = searxng,
     exaapi    = exaai,
 }

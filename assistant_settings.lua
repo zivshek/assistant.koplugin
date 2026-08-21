@@ -537,7 +537,7 @@ SettingsDialog.genWebSearchSubMenuItem = function(assistant, key)
             if ToolExecutor.IsExtSearch(key) then
                 Trapper:wrap(function()
                     local API = ExtTools[key]
-                    local ok, info = API:AccoutInfo()
+                    local ok, info = API:AccountInfo()
                     UIManager:show(InfoMessage:new{ face = Font:getFace("smallinfofont"),
                         text = info
                     })

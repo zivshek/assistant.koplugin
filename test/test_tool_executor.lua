@@ -4,6 +4,7 @@ local helper = require("test.test_helper")
 local assert = helper.assert
 local ToolExecutor = helper.ToolExecutor
 local ASUtils = helper.ASUtils
+local OpenAIHandler = require("api_handlers.openai")
 
 local function test(name, fn)
     return { name = name, fn = fn }
@@ -103,6 +104,22 @@ local tests = {
         assert.matches(audit, "Web search used")
         assert.matches(audit, "Tavily")
         assert.matches(audit, "deepseek web search")
+    end),
+
+    test("OpenAI-compatible handler forces tool choice only when requested", function()
+        local tool_def = { ToolExecutor.buildExternalSearchToolDef("openai") }
+
+        local forced = OpenAIHandler:buildRequestBody({}, {
+            use_stream_mode = false,
+            force_websearch = true,
+        }, tool_def)
+        local automatic = OpenAIHandler:buildRequestBody({}, {
+            use_stream_mode = false,
+            force_websearch = false,
+        }, tool_def)
+
+        assert.equal(forced.tool_choice, "required")
+        assert.equal(automatic.tool_choice, "auto")
     end),
 }
 

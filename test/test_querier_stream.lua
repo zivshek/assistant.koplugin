@@ -1,6 +1,6 @@
 -- test_querier_stream.lua
 -- Regression tests for the streaming UI update logic in assistant_querier.lua
--- (showStremDialog).
+-- (showStreamDialog).
 --
 -- Background: commit 6f4b134 introduced a regression where the
 -- stream_mode_auto_scroll=false branch still called addTextToInput(delta),
@@ -8,7 +8,7 @@
 -- The fix restores the pre-6f4b134 behavior for that branch: resyncPos() +
 -- setText(full_text, true), preserving the current scroll/cursor position.
 --
--- The real flush logic is a local closure inside showStremDialog that needs
+-- The real flush logic is a local closure inside showStreamDialog that needs
 -- the full KOReader UI stack, so (per project testing policy) we inline a copy
 -- of the pure helper and a driver that mirrors the closure, and test those.
 local helper = require("test.test_helper")
@@ -77,7 +77,7 @@ local function makeMockDialog()
 end
 
 -- Driver that mirrors the pending_delta/flush closure and the
--- reasoning->answer transition in assistant_querier.lua showStremDialog.
+-- reasoning->answer transition in assistant_querier.lua showStreamDialog.
 local function makeStreamDriver(dialog, auto_scroll)
     local pending_delta = strbuf.new() -- delta since the last UI flush
     local flush_scheduled = false
@@ -108,7 +108,7 @@ local function makeStreamDriver(dialog, auto_scroll)
                 flush_scheduled = true
             end
         end,
-        -- Mirror of the final unschedule+flush in showStremDialog.
+        -- Mirror of the final unschedule+flush in showStreamDialog.
         flush = function()
             if flush_scheduled then
                 flush_scheduled = false
@@ -116,6 +116,23 @@ local function makeStreamDriver(dialog, auto_scroll)
             end
         end,
     }
+end
+
+-- Inlined copy of the tool-loop state transition in assistant_querier.lua:
+-- explicit forced search and max-search prompts must lead to one final answer
+-- request with web_search disabled.
+local function applyWebSearchPostToolState(query_option, is_added_maximum_prompt, tool_rounds, max_tool_rounds)
+    local function disableWebSearchForFinalAnswer()
+        query_option.force_websearch = false
+        query_option.use_websearch = "none"
+    end
+
+    if query_option.force_websearch then
+        disableWebSearchForFinalAnswer()
+    end
+    if is_added_maximum_prompt or tool_rounds >= max_tool_rounds then
+        disableWebSearchForFinalAnswer()
+    end
 end
 
 local tests = {
@@ -219,6 +236,20 @@ local tests = {
         -- the pending reasoning flush and for the transition clear
         assert.isTrue(#calls.initTextBox >= 2,
             "pending reasoning flush + transition clear should each call initTextBox")
+    end),
+
+    test("tool loop disables web_search before final answer after max searches", function()
+        local query_option = { use_websearch = "tavilyapi", force_websearch = false }
+        applyWebSearchPostToolState(query_option, true, 4, 3)
+        assert.equal(query_option.use_websearch, "none")
+        assert.isFalse(query_option.force_websearch)
+    end),
+
+    test("tool loop makes explicit forced search one-shot", function()
+        local query_option = { use_websearch = "tavilyapi", force_websearch = true }
+        applyWebSearchPostToolState(query_option, false, 1, 3)
+        assert.equal(query_option.use_websearch, "none")
+        assert.isFalse(query_option.force_websearch)
     end),
 }
 

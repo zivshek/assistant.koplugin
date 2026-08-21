@@ -182,7 +182,7 @@ local CONFIGURATION = {
             }
         },
         openrouter_free = {
-            --- use another free model with defferent configuration
+            --- use another free model with different configuration
             model = "openrouter/free", -- model list: https://openrouter.ai/models?order=top-weekly
             base_url = "https://openrouter.ai/api/v1",
             api_key = "your-openrouter-api-key",
@@ -333,7 +333,7 @@ local CONFIGURATION = {
             max_tokens = 4096
         },
         serpapi = {
-            -- External Search Tool API: SerpAPI, free tier: 250 searchs / month
+            -- External Search Tool API: SerpAPI, free tier: 250 searches / month
             -- https://serpapi.com/
             api_key = "your-serp-api-key"
         },

@@ -328,7 +328,7 @@ function AssistantDialog:_getBookContext()
 end
 
 -- When clicked [Assistant] button in main select popup,
--- Or when activated from guesture (no text highlighted)
+-- Or when activated from gesture (no text highlighted)
 function AssistantDialog:show(highlightedText)
 
   local is_highlighted = highlightedText and highlightedText ~= ""

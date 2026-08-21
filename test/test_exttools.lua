@@ -20,8 +20,8 @@ local tests = {
         assert.equal(result, "", "SearchKeywords should return empty string")
     end),
 
-    test("SearchToolBase: AccoutInfo returns name and base_url", function()
-        local ok, result = extools.none:AccoutInfo()
+    test("SearchToolBase: AccountInfo returns name and base_url", function()
+        local ok, result = extools.none:AccountInfo()
         assert.equal(ok, true)
         assert.notNil(result)
     end),
