@@ -71,6 +71,12 @@ local tests = {
         assert.isFalse(updater.isVersionNewer("1.0.0-rc.1", "1.0.0-rc.1"))
     end),
 
+    test("isSameVersion: treats equivalent versions as equal", function()
+        assert.isTrue(updater.isSameVersion("1.20", "1.20.0"))
+        assert.isTrue(updater.isSameVersion("v1.20", "1.20.0"))
+        assert.isFalse(updater.isSameVersion("1.21", "1.20"))
+    end),
+
     test("isVersionNewer: handles 'v' prefix", function()
         -- isVersionNewer doesn't strip 'v' prefix, so "v2.0" is treated as non-numeric
         -- but main version parse uses %d+, so it correctly extracts 2 and 0

@@ -175,6 +175,17 @@ local function versionFromRef(version)
   return version:match("^v([%w%.%-%+]+)$")
 end
 
+local function isSameVersion(v1_str, v2_str)
+  if not v1_str or not v2_str then return false end
+  return not isVersionNewer(v1_str, v2_str) and not isVersionNewer(v2_str, v1_str)
+end
+
+local function isInstalledVersion(version)
+  local normalized_version = versionFromRef(version)
+  if not normalized_version or not meta or not meta.version then return false end
+  return isSameVersion(normalized_version, tostring(meta.version))
+end
+
 local function rewriteMetaVersion(plugin_dir, version)
   local normalized_version = versionFromRef(version)
   if not normalized_version then return true end
@@ -307,6 +318,14 @@ local function otaUpgrade(version)
     return
   end
   version = download_info.version
+
+  if isInstalledVersion(version) then
+    Notification:notify(
+      T(_("%1 is already up to date (%2)."), meta.fullname or _("AI Assistant"), version),
+      Notification.SOURCE_ALWAYS_SHOW
+    )
+    return
+  end
 
   local DataStorage = require("datastorage")
   local lfs = require("libs/libkoreader-lfs")
@@ -550,6 +569,7 @@ return {
   buildReleaseAssetUrl = buildReleaseAssetUrl,
   buildSourceArchiveUrl = buildSourceArchiveUrl,
   versionFromRef = versionFromRef,
+  isSameVersion = isSameVersion,
   checkForUpdates = function(assistant)
     CONFIGURATION = assistant.CONFIGURATION
     meta = assistant.meta
