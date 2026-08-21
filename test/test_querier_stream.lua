@@ -135,6 +135,23 @@ local function applyWebSearchPostToolState(query_option, is_added_maximum_prompt
     end
 end
 
+-- Inlined copy of assistant_querier.lua's interrupted-stream recovery helper.
+local function cleanStreamError(err)
+    return tostring(err or ""):gsub("^[\n%s]*", "")
+end
+
+local function addInterruptedStreamNotice(content, err)
+    if type(content) ~= "string" or #content:gsub("^%s+", ""):gsub("%s+$", "") == 0 then
+        return nil, cleanStreamError(err)
+    end
+    local notice = "\n\n---\n\n**Response interrupted before completion.**"
+    local clean_err = cleanStreamError(err)
+    if #clean_err > 0 then
+        notice = notice .. "\n\nError: " .. clean_err
+    end
+    return content .. notice, nil
+end
+
 local tests = {
 
     -- =========================================================================
@@ -250,6 +267,20 @@ local tests = {
         applyWebSearchPostToolState(query_option, false, 1, 3)
         assert.equal(query_option.use_websearch, "none")
         assert.isFalse(query_option.force_websearch)
+    end),
+
+    test("interrupted stream keeps partial content with a notice", function()
+        local content, err = addInterruptedStreamNotice("partial X-Ray answer", "\n timeout")
+        assert.equal(err, nil)
+        assert.isTrue(content:find("partial X-Ray answer", 1, true) ~= nil)
+        assert.isTrue(content:find("Response interrupted before completion", 1, true) ~= nil)
+        assert.isTrue(content:find("timeout", 1, true) ~= nil)
+    end),
+
+    test("interrupted stream without content remains an error", function()
+        local content, err = addInterruptedStreamNotice("   ", "\n upstream closed")
+        assert.equal(content, nil)
+        assert.equal(err, "upstream closed")
     end),
 }
 

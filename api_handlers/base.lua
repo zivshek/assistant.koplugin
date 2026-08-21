@@ -2,6 +2,7 @@ local logger = require("logger")
 local http = require("socket.http")
 local ltn12 = require("ltn12")
 local socket = require("socket")
+local socketutil = require("socketutil")
 local https = require("ssl.https")
 local Trapper = require("ui/trapper")
 local json = require("rapidjson")
@@ -156,6 +157,8 @@ end
 --- Return a background-process function suitable for streaming (subprocess + pipe).
 --- The returned function is passed to Querier:processStream via runInSubProcess.
 function BaseHandler:backgroundRequest(url, headers, body)
+    local stream_timeout = 45
+    local stream_maxtime = 600
 
     local function wrap_fd(fd)
         local fo = {}
@@ -184,7 +187,9 @@ function BaseHandler:backgroundRequest(url, headers, body)
             source  = ltn12.source.string(body or ""),
             sink    = ltn12.sink.file(wrap_fd(child_write_fd)),
         }
+        socketutil:set_timeout(stream_timeout, stream_maxtime)
         local code, resp_headers, status = socket.skip(1, http.request(request))
+        socketutil:reset_timeout()
         if code ~= 200 then
             logger.warn("Background request non-200:", code, "status:", status, "url:", url)
             local err_struct = {
