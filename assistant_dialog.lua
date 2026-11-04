@@ -86,6 +86,7 @@ function AssistantDialog:_formatUserPrompt(user_prompt, highlightedText, user_in
     title = book.title,
     author = book.author,
     language = language,
+    book_language = ASUtils.getBookLanguageName(self.assistant.ui, text_to_use) or "unknown",
     highlight = text_to_use,
     user_input = user_input,
     progress = formatted_progress,

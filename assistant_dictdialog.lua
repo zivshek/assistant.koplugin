@@ -418,8 +418,9 @@ local term_xray_prompts = require("assistant_prompts").builtin_prompts.term_xray
         loading_message = _("Loading AI Dictionary ...")
         local context_message = {
             role = "user",
-            content = string.gsub(user_prompt, "{(%w+)}", {
+            content = string.gsub(user_prompt, "{([%w_]+)}", {
                     language = dict_language,
+                    book_language = ASUtils.getBookLanguageName(ui, context_content) or "unknown",
                     context = context_content,
                     word = highlightedText
             })

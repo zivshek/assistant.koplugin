@@ -8,6 +8,7 @@ local T = require("ffi/util").template
 -- {author} : book author from metadata
 -- {highlight}  : selected texts
 -- {language}   : the `response_language` variable defined above
+-- {book_language} : book language from metadata, inferred from the selected text when unavailable
 -- {user_input} : user input from the input dialog
 -- {progress}   : the progress percentage of the book
 --
@@ -133,7 +134,8 @@ Briefly state what remains unclear from the limited context.
         text = _("Translate"),
         use_websearch = false,
         desc = _("This prompt translates the highlighted text to another language."),
-        user_prompt = [[You are a professional translator. Translate the text below into {language}.
+        user_prompt = [[You are a professional translator. The book's language is {book_language}.
+Translate the text below into English if the book is in Chinese (including Simplified or Traditional Chinese); otherwise translate it into Chinese. If the book's language is unknown, infer it from the source text. Use this translation rule regardless of the configured response language.
 
 **Rules:**
 * **Fluency**: Focus on natural, idiomatic expression and preserve the original tone (formal/casual/technical) rather than word-for-word translation.
@@ -244,7 +246,7 @@ You are a summarization expert. Provide a concise and clear summary of the text 
 
 **Rules:**
 * **Depth**: Fully break down the meaning, including complex terms, underlying concepts, and implicit nuances. 
-* **Language**: Render the *entire* response (including headers) completely in {language}.
+* **Language**: Write the main explanation in {language}. Always end with a section headed "中文解释" containing a brief Chinese explanation of the key meaning.
 * **Format**: Use a mix of fluid prose and clean Markdown structure (like bullet points) for maximum clarity.
 * **Output**: Start directly with the explanation; do not include introductory text or meta-commentary.
 
@@ -534,12 +536,13 @@ Now begin the analysis with the provided book_text and highlights.]],
 Explain "{word}" as used in "{title}" by {author}. Use only this context:
 {context}
 
-Answer entirely in {language}, start directly, and keep each item brief.
+Answer in {language}, except for the Translation section below. Start directly and keep each item brief.
+The book's language is {book_language}. If unknown, infer it from the provided context.
 
 * ** %1 **: Form in the sentence, if different from the base form.
 * ** %2 **: Up to 3 relevant synonyms.
 * ** %3 **: Literal meaning.
-* ** %4 **: Translate the sentence containing the word; bold **{word}**.
+* ** %4 **: Translate the sentence containing the word into English if the book is in Chinese (including Simplified or Traditional Chinese); otherwise translate it into Chinese. Follow this rule regardless of {language}. Bold the translated equivalent of **{word}**.
 * ** %5 **: Specific meaning or effect in this book.
 * ** %6 **: One short example sentence.
 * ** %7 **: Brief origin or significance, if useful.
